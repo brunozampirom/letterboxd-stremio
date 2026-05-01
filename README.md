@@ -8,26 +8,25 @@ The addon scrapes public pages on `letterboxd.com` (no API key required), resolv
 
 ---
 
-## Features
+## Hosted instance
 
-- **Watchlist** as a Stremio catalog
-- **Diary** (films you've logged) as a Stremio catalog
-- **Custom lists** (each public list becomes its own catalog) — _coming soon_
-- **In-memory caching** with configurable TTL to be polite to Letterboxd
-- **Multi-tenant** — one deployment serves any number of users via URL-based config
-- **Self-hostable** — Docker, plain Node, or Vercel
+The maintainer runs a public instance you can use without setting anything up:
+
+> **https://letterboxd-stremio.vercel.app/configure**
+
+Enter your Letterboxd username and click **Install in Stremio**. That's it. The instance is free, has rate limiting, and uses Upstash Redis for caching. If you'd rather run your own (recommended for heavy use, full control, or distrust of third parties), see [Self-host](#self-host) below.
 
 ---
 
-## Install (hosted)
+## Features
 
-If you only want to use the addon and not run your own copy, point Stremio at a hosted instance and enter your Letterboxd username on the configure page.
-
-```
-https://<host>/<your-letterboxd-username>/manifest.json
-```
-
-Replace `<host>` with the deployment you trust and `<your-letterboxd-username>` with your handle.
+- **Watchlist** as a Stremio catalog (Movies and Series, separated automatically)
+- **Diary** (films you've logged) as a Stremio catalog
+- **Custom lists** — every public list on your profile becomes a catalog
+- **Caching** — Upstash Redis when configured, in-memory fallback otherwise
+- **Per-IP rate limiting** when Upstash Redis is available
+- **Multi-tenant** — one deployment serves any number of users via URL-based config
+- **Self-hostable** — Docker, plain Node, or Vercel
 
 ---
 
