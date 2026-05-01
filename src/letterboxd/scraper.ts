@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { getOrFetch } from '../cache/memory';
+import { getOrFetch } from '../cache';
 import { loadConfig } from '../config';
 import { fetchPage, LetterboxdError } from './http';
 import { LetterboxdFilm, LetterboxdList } from './types';

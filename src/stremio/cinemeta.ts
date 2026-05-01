@@ -1,4 +1,4 @@
-import { getOrFetch } from '../cache/memory';
+import { getOrFetch } from '../cache';
 import { StremioType } from './types';
 
 const CINEMETA_BASE = 'https://v3-cinemeta.strem.io';

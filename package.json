@@ -17,6 +17,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@upstash/redis": "^1.37.0",
     "cheerio": "^1.0.0"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-import { getOrFetch } from '../cache/memory';
+import { getOrFetch } from '../cache';
 import { fetchPage } from './http';
 
 export type FilmIds = {
