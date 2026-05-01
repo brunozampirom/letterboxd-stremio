@@ -4,6 +4,15 @@ import { getRedis, redisGet, redisSet } from './redis';
 const useRedis = getRedis() !== null;
 console.log(`[cache] backend: ${useRedis ? 'redis (upstash)' : 'memory'}`);
 
+export type CacheInfo = {
+  backend: 'redis' | 'memory';
+  vendor?: 'upstash';
+};
+
+export function info(): CacheInfo {
+  return useRedis ? { backend: 'redis', vendor: 'upstash' } : { backend: 'memory' };
+}
+
 export async function get<T>(key: string): Promise<T | undefined> {
   if (useRedis) return redisGet<T>(key);
   return memory.get<T>(key);

@@ -1,9 +1,11 @@
 import * as fs from 'node:fs';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
+import { info as cacheInfo } from '../cache';
 import { handleCatalog } from '../stremio/handlers';
 import { buildManifest } from '../stremio/manifest';
 
+const VERSION = '0.1.0';
 const USERNAME_RE = /^[a-z0-9_]{1,32}$/i;
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 
@@ -20,6 +22,23 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
     ...CORS_HEADERS,
   });
   res.end(JSON.stringify(body));
+}
+
+function sendHealth(res: ServerResponse) {
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    ...CORS_HEADERS,
+  });
+  res.end(
+    JSON.stringify({
+      ok: true,
+      version: VERSION,
+      cache: cacheInfo(),
+      uptime: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
+    }),
+  );
 }
 
 function sendNotFound(res: ServerResponse) {
@@ -61,6 +80,11 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
   if (segments.length === 0) {
     sendConfigurePage(res);
+    return;
+  }
+
+  if (segments[0] === 'health' && segments.length === 1) {
+    sendHealth(res);
     return;
   }
 
