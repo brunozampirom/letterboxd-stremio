@@ -1,0 +1,11 @@
+services:
+  letterboxd-stremio:
+    build: .
+    image: letterboxd-stremio:latest
+    container_name: letterboxd-stremio
+    ports:
+      - "7777:7777"
+    environment:
+      - PORT=7777
+      - CACHE_TTL_MINUTES=60
+    restart: unless-stopped
