@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { info as cacheInfo } from '../cache';
 import { handleCatalog } from '../stremio/handlers';
 import { buildManifest } from '../stremio/manifest';
+import { handleProbe } from './admin';
 import { Bucket, check, info as ratelimitInfo, LimitResult } from './ratelimit';
 
 const VERSION = '0.1.0';
@@ -108,7 +109,7 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   const url = req.url ?? '/';
-  const [pathname] = url.split('?');
+  const [pathname, search = ''] = url.split('?');
   const segments = pathname.split('/').filter(Boolean);
 
   if (segments.length === 0) {
@@ -118,6 +119,11 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
   if (segments[0] === 'health' && segments.length === 1) {
     sendHealth(res);
+    return;
+  }
+
+  if (segments[0] === 'admin' && segments[1] === 'probe' && segments.length === 2) {
+    await handleProbe(req, res, new URLSearchParams(search));
     return;
   }
 
