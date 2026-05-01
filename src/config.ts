@@ -5,7 +5,7 @@ export type Config = {
 };
 
 const DEFAULT_USER_AGENT =
-  'letterboxd-stremio/0.1 (+https://github.com/your-username/letterboxd-stremio)';
+  'letterboxd-stremio/0.1 (+https://github.com/brunozampirom/letterboxd-stremio)';
 
 export function loadConfig(): Config {
   const port = Number.parseInt(process.env.PORT ?? '7777', 10);

@@ -36,7 +36,7 @@ Replace `<host>` with the deployment you trust and `<your-letterboxd-username>` 
 ### Option 1: Docker
 
 ```bash
-git clone https://github.com/your-username/letterboxd-stremio.git
+git clone https://github.com/brunozampirom/letterboxd-stremio.git
 cd letterboxd-stremio
 docker compose up -d
 ```
@@ -50,7 +50,7 @@ http://127.0.0.1:7777/<your-letterboxd-username>/manifest.json
 ### Option 2: Node
 
 ```bash
-git clone https://github.com/your-username/letterboxd-stremio.git
+git clone https://github.com/brunozampirom/letterboxd-stremio.git
 cd letterboxd-stremio
 yarn install
 cp .env.example .env  # adjust values if you wish
