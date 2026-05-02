@@ -59,14 +59,17 @@
         letter-spacing: 0.04em;
       }
       .catalog-option {
-        display: flex;
-        align-items: flex-start;
-        gap: 10px;
+        display: block;
         padding: 8px 0;
         cursor: pointer;
       }
+      .catalog-option .row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
       .catalog-option input[type="checkbox"] {
-        margin-top: 3px;
+        margin: 0;
         accent-color: var(--accent);
         width: 16px;
         height: 16px;
@@ -78,7 +81,7 @@
         color: var(--fg);
       }
       .catalog-option .desc {
-        margin-top: 2px;
+        margin: 2px 0 0 26px;
         font-size: 12px;
         color: var(--muted);
       }
@@ -167,25 +170,25 @@
         <fieldset id="catalogs">
           <legend>Catalogs</legend>
           <label class="catalog-option">
-            <input type="checkbox" data-flag="w" checked />
-            <span>
+            <span class="row">
+              <input type="checkbox" data-flag="w" checked />
               <span class="meta">Watchlist</span>
-              <span class="desc">Films you've added to your Letterboxd watchlist.</span>
             </span>
+            <span class="desc">Films you've added to your Letterboxd watchlist.</span>
           </label>
           <label class="catalog-option">
-            <input type="checkbox" data-flag="d" checked />
-            <span>
+            <span class="row">
+              <input type="checkbox" data-flag="d" checked />
               <span class="meta">Diary</span>
-              <span class="desc">Films you've logged on Letterboxd.</span>
             </span>
+            <span class="desc">Films you've logged on Letterboxd.</span>
           </label>
           <label class="catalog-option" id="recOption">
-            <input type="checkbox" data-flag="r" checked />
-            <span>
+            <span class="row">
+              <input type="checkbox" data-flag="r" checked />
               <span class="meta">Recommended</span>
-              <span class="desc">Films similar to those you rated 4★ or higher.</span>
             </span>
+            <span class="desc">Films similar to ones you liked or rated 4★ or higher.</span>
           </label>
         </fieldset>
 

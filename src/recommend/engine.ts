@@ -1,6 +1,6 @@
 import { getOrFetch } from '../cache';
 import { resolveFilmIds } from '../letterboxd/film';
-import { fetchHighlyRated, RssEntry } from '../letterboxd/rss';
+import { fetchSeedFilms, RssEntry } from '../letterboxd/rss';
 import { fetchDiary, fetchWatchlist } from '../letterboxd/scraper';
 import { fetchRecommendations, fetchSimilar, isConfigured, resolveImdbId } from '../tmdb/client';
 import { mapPool } from '../util/pool';
@@ -53,12 +53,14 @@ async function expandSimilars(base: RssEntry[]): Promise<Map<string, number>> {
     ]);
 
     const seen = new Set<string>();
+    const baseWeight = entry.rating ?? DEFAULT_MIN_RATING;
+    const likedBoost = entry.liked === true ? 0.5 : 0;
+    const weight = baseWeight + likedBoost;
     for (const r of [...similar, ...recs]) {
       if (r.tmdbId === entry.tmdbId) continue;
       if (seen.has(r.tmdbId)) continue;
       seen.add(r.tmdbId);
-      const ratingWeight = entry.rating ?? DEFAULT_MIN_RATING;
-      candidates.set(r.tmdbId, (candidates.get(r.tmdbId) ?? 0) + ratingWeight);
+      candidates.set(r.tmdbId, (candidates.get(r.tmdbId) ?? 0) + weight);
     }
   });
 
@@ -83,7 +85,7 @@ export async function recommend(
   if (!isConfigured()) return [];
 
   return getOrFetch(`recommend:${username}:${minRating}:${maxResults}`, ENGINE_CACHE_TTL_MS, async () => {
-    const baseEntries = await fetchHighlyRated(username, minRating);
+    const baseEntries = await fetchSeedFilms(username, minRating);
     if (baseEntries.length === 0) return [];
 
     const baseTmdbIds = new Set(baseEntries.map((e) => e.tmdbId));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRss } from '../src/letterboxd/rss';
+import { parseRss, RssEntry } from '../src/letterboxd/rss';
 
 const SAMPLE = `<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:letterboxd="https://letterboxd.com" xmlns:tmdb="https://themoviedb.org">
@@ -24,6 +24,7 @@ const SAMPLE = `<?xml version="1.0" encoding="utf-8"?>
     <letterboxd:filmTitle>Persona</letterboxd:filmTitle>
     <letterboxd:filmYear>1966</letterboxd:filmYear>
     <letterboxd:memberRating>4.0</letterboxd:memberRating>
+    <letterboxd:liked>true</letterboxd:liked>
     <tmdb:movieId>815</tmdb:movieId>
   </item>
   <item>
@@ -31,7 +32,15 @@ const SAMPLE = `<?xml version="1.0" encoding="utf-8"?>
     <letterboxd:filmTitle>Bad Movie</letterboxd:filmTitle>
     <letterboxd:filmYear>2023</letterboxd:filmYear>
     <letterboxd:memberRating>2.0</letterboxd:memberRating>
+    <letterboxd:liked>false</letterboxd:liked>
     <tmdb:movieId>999999</tmdb:movieId>
+  </item>
+  <item>
+    <title>Loved Without Rating, 2020</title>
+    <letterboxd:filmTitle>Loved Without Rating</letterboxd:filmTitle>
+    <letterboxd:filmYear>2020</letterboxd:filmYear>
+    <letterboxd:liked>true</letterboxd:liked>
+    <tmdb:movieId>111111</tmdb:movieId>
   </item>
 </channel>
 </rss>`;
@@ -39,10 +48,20 @@ const SAMPLE = `<?xml version="1.0" encoding="utf-8"?>
 describe('parseRss', () => {
   it('extracts only entries with tmdb:movieId', () => {
     const entries = parseRss(SAMPLE);
-    expect(entries).toHaveLength(3);
+    expect(entries).toHaveLength(4);
     expect(entries[0]).toMatchObject({ tmdbId: '496243', title: 'Parasite', year: 2019, rating: 5.0 });
-    expect(entries[1]).toMatchObject({ tmdbId: '815', title: 'Persona', year: 1966, rating: 4.0 });
-    expect(entries[2]).toMatchObject({ tmdbId: '999999', rating: 2.0 });
+    expect(entries[1]).toMatchObject({ tmdbId: '815', title: 'Persona', rating: 4.0, liked: true });
+    expect(entries[2]).toMatchObject({ tmdbId: '999999', rating: 2.0, liked: false });
+    expect(entries[3]).toMatchObject({ tmdbId: '111111', liked: true, rating: undefined });
+  });
+
+  it('treats liked-only entries as valid seeds', () => {
+    const entries = parseRss(SAMPLE);
+    const seeds = entries.filter(
+      (e: RssEntry) => e.liked === true || (typeof e.rating === 'number' && e.rating >= 4),
+    );
+    // Parasite (rating 5), Persona (rating 4 + liked), Loved Without Rating (liked only)
+    expect(seeds.map((e: RssEntry) => e.tmdbId).sort()).toEqual(['111111', '496243', '815']);
   });
 
   it('handles entries without ratings', () => {

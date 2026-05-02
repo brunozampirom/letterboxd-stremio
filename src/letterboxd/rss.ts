@@ -7,6 +7,7 @@ export type RssEntry = {
   title: string;
   year?: number;
   rating?: number;
+  liked?: boolean;
   watchedDate?: string;
 };
 
@@ -15,6 +16,7 @@ const TITLE_RE = /<letterboxd:filmTitle>(?:<!\[CDATA\[)?([^<\]]+)(?:\]\]>)?<\/le
 const YEAR_RE = /<letterboxd:filmYear>(\d{4})<\/letterboxd:filmYear>/;
 const TMDB_ID_RE = /<tmdb:movieId>(\d+)<\/tmdb:movieId>/;
 const WATCHED_RE = /<letterboxd:watchedDate>(\d{4}-\d{2}-\d{2})<\/letterboxd:watchedDate>/;
+const LIKED_RE = /<letterboxd:liked>(true|false)<\/letterboxd:liked>/;
 const ITEM_RE = /<item>([\s\S]*?)<\/item>/g;
 
 export function parseRss(xml: string): RssEntry[] {
@@ -25,11 +27,13 @@ export function parseRss(xml: string): RssEntry[] {
     if (!tmdbMatch) continue;
     const titleMatch = block.match(TITLE_RE);
     if (!titleMatch) continue;
+    const likedMatch = block.match(LIKED_RE);
     entries.push({
       tmdbId: tmdbMatch[1],
       title: titleMatch[1].trim(),
       year: block.match(YEAR_RE) ? Number.parseInt(block.match(YEAR_RE)![1], 10) : undefined,
       rating: block.match(RATING_RE) ? Number.parseFloat(block.match(RATING_RE)![1]) : undefined,
+      liked: likedMatch ? likedMatch[1] === 'true' : undefined,
       watchedDate: block.match(WATCHED_RE)?.[1],
     });
   }
@@ -51,10 +55,10 @@ export async function fetchRssEntries(username: string): Promise<RssEntry[]> {
   });
 }
 
-export async function fetchHighlyRated(
+export async function fetchSeedFilms(
   username: string,
   minRating: number,
 ): Promise<RssEntry[]> {
   const entries = await fetchRssEntries(username);
-  return entries.filter((e) => typeof e.rating === 'number' && e.rating >= minRating);
+  return entries.filter((e) => e.liked === true || (typeof e.rating === 'number' && e.rating >= minRating));
 }
