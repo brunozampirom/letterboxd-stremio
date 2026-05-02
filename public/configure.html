@@ -79,6 +79,7 @@
         font-weight: 600;
         font-size: 14px;
         color: var(--fg);
+        flex: 1 1 auto;
       }
       .catalog-option .desc {
         margin: 2px 0 0 26px;
@@ -88,6 +89,53 @@
       .catalog-option.disabled {
         opacity: 0.45;
         cursor: not-allowed;
+      }
+      .external-link {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 13px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        flex-shrink: 0;
+        line-height: 1;
+      }
+      .external-link:hover {
+        color: var(--accent);
+        background: rgba(0, 224, 84, 0.08);
+      }
+      .compact .catalog-option {
+        padding: 4px 0;
+      }
+      .compact .meta {
+        font-weight: 500;
+        font-size: 13px;
+      }
+      details.curated-group {
+        margin-top: 4px;
+      }
+      details.curated-group summary {
+        font-size: 13px;
+        color: var(--muted);
+        cursor: pointer;
+        padding: 6px 0;
+        user-select: none;
+        list-style: none;
+      }
+      details.curated-group summary::-webkit-details-marker { display: none; }
+      details.curated-group summary::before {
+        content: '▸';
+        display: inline-block;
+        margin-right: 6px;
+        transition: transform 0.15s;
+      }
+      details.curated-group[open] summary::before {
+        transform: rotate(90deg);
+      }
+      details.curated-group summary:hover {
+        color: var(--fg);
+      }
+      details.curated-group[open] summary {
+        color: var(--fg);
       }
       .actions {
         display: flex;
@@ -205,53 +253,94 @@
         <fieldset id="curated">
           <legend>Curated picks (filtered by what you haven't watched)</legend>
           <label class="catalog-option">
-            <span class="row"><input type="checkbox" data-flag="t" checked /><span class="meta">Letterboxd's Top 500</span></span>
-            <span class="desc">Highest-rated narrative features on Letterboxd.</span>
+            <span class="row">
+              <input type="checkbox" data-flag="t" checked />
+              <span class="meta" title="Highest-rated narrative features on Letterboxd.">Letterboxd's Top 500</span>
+              <a class="external-link" href="https://letterboxd.com/official/list/letterboxds-top-500-films/" target="_blank" rel="noopener" title="Open on Letterboxd" onclick="event.stopPropagation()">↗</a>
+            </span>
           </label>
-          <label class="catalog-option">
-            <span class="row"><input type="checkbox" data-flag="f" /><span class="meta">Top 250 with Most Fans</span></span>
-            <span class="desc">Films with the most members marking them as a favorite.</span>
-          </label>
-          <label class="catalog-option">
-            <span class="row"><input type="checkbox" data-flag="a" /><span class="meta">Top 250 Animated</span></span>
-            <span class="desc">Highest-rated animated feature films.</span>
-          </label>
-          <label class="catalog-option">
-            <span class="row"><input type="checkbox" data-flag="h" /><span class="meta">Top 250 Horror</span></span>
-            <span class="desc">Highest-rated narrative features in the horror genre.</span>
-          </label>
-          <label class="catalog-option">
-            <span class="row"><input type="checkbox" data-flag="o" /><span class="meta">Top 250 Documentaries</span></span>
-            <span class="desc">Highest-rated documentary feature films.</span>
-          </label>
-          <label class="catalog-option">
-            <span class="row"><input type="checkbox" data-flag="n" /><span class="meta">Top 250 by Women Directors</span></span>
-            <span class="desc">Highest-rated features directed or co-directed by women.</span>
-          </label>
-          <label class="catalog-option">
-            <span class="row"><input type="checkbox" data-flag="u" /><span class="meta">Top 100 Underseen</span></span>
-            <span class="desc">Hidden gems below the standard ratings threshold.</span>
-          </label>
-          <label class="catalog-option">
-            <span class="row"><input type="checkbox" data-flag="s" /><span class="meta">Top 250 Shorts</span></span>
-            <span class="desc">Highest-rated short films.</span>
-          </label>
-          <label class="catalog-option">
-            <span class="row"><input type="checkbox" data-flag="b" /><span class="meta">Top 250 by Black Directors</span></span>
-            <span class="desc">Highest-rated features directed or co-directed by Black filmmakers.</span>
-          </label>
-          <label class="catalog-option">
-            <span class="row"><input type="checkbox" data-flag="e" /><span class="meta">The 2010s Top 250</span></span>
-            <span class="desc">Highest-rated narrative features from 2010–2019.</span>
-          </label>
-          <label class="catalog-option">
-            <span class="row"><input type="checkbox" data-flag="m" /><span class="meta">Top 250 Miniseries</span></span>
-            <span class="desc">Highest-rated miniseries on Letterboxd.</span>
-          </label>
-          <label class="catalog-option">
-            <span class="row"><input type="checkbox" data-flag="j" /><span class="meta">Top 100 Japanese Films</span></span>
-            <span class="desc">Highest-rated Japanese feature films.</span>
-          </label>
+          <details class="curated-group">
+            <summary>More curated lists (11)</summary>
+            <div class="compact">
+              <label class="catalog-option">
+                <span class="row">
+                  <input type="checkbox" data-flag="f" />
+                  <span class="meta" title="Films with the most members marking them as a favorite.">Top 250 with Most Fans</span>
+                  <a class="external-link" href="https://letterboxd.com/official/list/top-250-films-with-the-most-fans/" target="_blank" rel="noopener" title="Open on Letterboxd" onclick="event.stopPropagation()">↗</a>
+                </span>
+              </label>
+              <label class="catalog-option">
+                <span class="row">
+                  <input type="checkbox" data-flag="a" />
+                  <span class="meta" title="Highest-rated animated feature films.">Top 250 Animated</span>
+                  <a class="external-link" href="https://letterboxd.com/official/list/top-250-animated-films/" target="_blank" rel="noopener" title="Open on Letterboxd" onclick="event.stopPropagation()">↗</a>
+                </span>
+              </label>
+              <label class="catalog-option">
+                <span class="row">
+                  <input type="checkbox" data-flag="h" />
+                  <span class="meta" title="Highest-rated narrative features in the horror genre.">Top 250 Horror</span>
+                  <a class="external-link" href="https://letterboxd.com/official/list/top-250-horror-films/" target="_blank" rel="noopener" title="Open on Letterboxd" onclick="event.stopPropagation()">↗</a>
+                </span>
+              </label>
+              <label class="catalog-option">
+                <span class="row">
+                  <input type="checkbox" data-flag="o" />
+                  <span class="meta" title="Highest-rated documentary feature films.">Top 250 Documentaries</span>
+                  <a class="external-link" href="https://letterboxd.com/official/list/top-250-documentary-films/" target="_blank" rel="noopener" title="Open on Letterboxd" onclick="event.stopPropagation()">↗</a>
+                </span>
+              </label>
+              <label class="catalog-option">
+                <span class="row">
+                  <input type="checkbox" data-flag="n" />
+                  <span class="meta" title="Highest-rated features directed or co-directed by women.">Top 250 by Women Directors</span>
+                  <a class="external-link" href="https://letterboxd.com/official/list/top-250-films-by-women-directors/" target="_blank" rel="noopener" title="Open on Letterboxd" onclick="event.stopPropagation()">↗</a>
+                </span>
+              </label>
+              <label class="catalog-option">
+                <span class="row">
+                  <input type="checkbox" data-flag="u" />
+                  <span class="meta" title="Hidden gems below the standard ratings threshold.">Top 100 Underseen</span>
+                  <a class="external-link" href="https://letterboxd.com/official/list/top-100-underseen-films/" target="_blank" rel="noopener" title="Open on Letterboxd" onclick="event.stopPropagation()">↗</a>
+                </span>
+              </label>
+              <label class="catalog-option">
+                <span class="row">
+                  <input type="checkbox" data-flag="s" />
+                  <span class="meta" title="Highest-rated short films.">Top 250 Shorts</span>
+                  <a class="external-link" href="https://letterboxd.com/official/list/top-250-short-films/" target="_blank" rel="noopener" title="Open on Letterboxd" onclick="event.stopPropagation()">↗</a>
+                </span>
+              </label>
+              <label class="catalog-option">
+                <span class="row">
+                  <input type="checkbox" data-flag="b" />
+                  <span class="meta" title="Highest-rated features directed or co-directed by Black filmmakers.">Top 250 by Black Directors</span>
+                  <a class="external-link" href="https://letterboxd.com/official/list/top-250-films-by-black-directors/" target="_blank" rel="noopener" title="Open on Letterboxd" onclick="event.stopPropagation()">↗</a>
+                </span>
+              </label>
+              <label class="catalog-option">
+                <span class="row">
+                  <input type="checkbox" data-flag="e" />
+                  <span class="meta" title="Highest-rated narrative features from 2010–2019.">The 2010s Top 250</span>
+                  <a class="external-link" href="https://letterboxd.com/official/list/the-2010s-top-250-narrative-features/" target="_blank" rel="noopener" title="Open on Letterboxd" onclick="event.stopPropagation()">↗</a>
+                </span>
+              </label>
+              <label class="catalog-option">
+                <span class="row">
+                  <input type="checkbox" data-flag="m" />
+                  <span class="meta" title="Highest-rated miniseries on Letterboxd.">Top 250 Miniseries</span>
+                  <a class="external-link" href="https://letterboxd.com/official/list/top-250-miniseries/" target="_blank" rel="noopener" title="Open on Letterboxd" onclick="event.stopPropagation()">↗</a>
+                </span>
+              </label>
+              <label class="catalog-option">
+                <span class="row">
+                  <input type="checkbox" data-flag="j" />
+                  <span class="meta" title="Highest-rated Japanese feature films.">Top 100 Japanese Films</span>
+                  <a class="external-link" href="https://letterboxd.com/official/list/top-100-japanese-films/" target="_blank" rel="noopener" title="Open on Letterboxd" onclick="event.stopPropagation()">↗</a>
+                </span>
+              </label>
+            </div>
+          </details>
         </fieldset>
 
         <div class="actions">
