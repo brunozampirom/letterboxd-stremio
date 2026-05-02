@@ -1,18 +1,13 @@
 import { CURATED_LISTS } from '../curated/lists';
 import { buildExclusionSet } from '../letterboxd/exclusion';
 import { resolveFilmIds } from '../letterboxd/film';
-import {
-  fetchDiary,
-  fetchListFilms,
-  fetchWatchlist,
-} from '../letterboxd/scraper';
+import { fetchListFilms, fetchWatchlist } from '../letterboxd/scraper';
 import { LetterboxdFilm } from '../letterboxd/types';
 import { recommend } from '../recommend/engine';
 import { mapPool } from '../util/pool';
 import { classifyAndEnrich } from './cinemeta';
 import {
   CATALOG_CURATED_PREFIX,
-  CATALOG_DIARY,
   CATALOG_LIST_PREFIX,
   CATALOG_RECOMMENDED,
   CATALOG_WATCHLIST,
@@ -70,11 +65,6 @@ export async function handleCatalog(
 
   if (id === CATALOG_WATCHLIST) {
     const films = await fetchWatchlist(username);
-    return { metas: await filmsToMetas(films, wantedType) };
-  }
-
-  if (id === CATALOG_DIARY) {
-    const films = await fetchDiary(username);
     return { metas: await filmsToMetas(films, wantedType) };
   }
 

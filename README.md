@@ -1,10 +1,10 @@
 # Letterboxd → Stremio
 
-A [Stremio](https://www.stremio.com/) addon that exposes any public Letterboxd profile's **watchlist**, **diary**, and **custom lists** as Stremio catalogs.
+A [Stremio](https://www.stremio.com/) addon that exposes any public Letterboxd profile's **watchlist**, **personalized recommendations**, and **curated picks** as Stremio catalogs.
 
 The addon scrapes public pages on `letterboxd.com` (no API key required), resolves each film to its IMDB ID, and serves Stremio-compatible catalogs. Stremio's built-in Cinemeta then handles posters, descriptions, and metadata.
 
-> **Status:** early/MVP. Watchlist + diary + custom lists. No login required — only public data.
+> **Status:** early/MVP. Watchlist + recommendations + curated picks. No login required — only public data.
 
 ---
 
@@ -21,9 +21,8 @@ Enter your Letterboxd username and click **Install in Stremio**. That's it. The 
 ## Features
 
 - **Watchlist** as a Stremio catalog (Movies and Series, separated automatically)
-- **Diary** (films you've logged) as a Stremio catalog
-- **Recommendations** — films similar to the ones you rated 4★ or higher; powered by TMDB and your Letterboxd RSS feed (requires a free TMDB token)
-- **Custom lists** — every public list on your profile becomes a catalog
+- **Recommendations** — films similar to the ones you liked or rated 4★ or higher; powered by TMDB and your Letterboxd RSS feed (requires a free TMDB token)
+- **Curated picks** — opt-in catalogs from Letterboxd's official lists (Top 500, Top 250 Horror, Animated, Documentaries, etc.), each filtered to films you haven't watched yet
 - **Caching** — Upstash Redis when configured, in-memory fallback otherwise
 - **Per-IP rate limiting** when Upstash Redis is available
 - **Multi-tenant** — one deployment serves any number of users via URL-based config
@@ -31,9 +30,9 @@ Enter your Letterboxd username and click **Install in Stremio**. That's it. The 
 
 ### Recommendations setup (optional)
 
-The Recommendations catalog reads your Letterboxd RSS feed (last ~50 logs) for entries you rated **4 stars or higher**, then fetches similar and recommended titles from **TMDB**. Aggregated scores are filtered against your watchlist and diary so you never see something you've already saved or watched.
+The Recommendations catalog reads your Letterboxd RSS feed (last ~50 logs) for entries you liked or rated **4 stars or higher**, then fetches similar and recommended titles from **TMDB**. Aggregated scores are filtered against your watchlist and recently-watched films so you never see something you've already saved or watched.
 
-To enable it, set `TMDB_READ_TOKEN` (free token from https://www.themoviedb.org/settings/api). Without it, the catalog is simply omitted from the manifest and the addon continues to work for watchlist/diary.
+To enable it, set `TMDB_READ_TOKEN` (free token from https://www.themoviedb.org/settings/api). Without it, the catalog is simply omitted from the manifest and the addon continues to work for the watchlist and curated picks.
 
 ---
 
@@ -93,7 +92,7 @@ src/
 ├── cache/memory.ts      # in-memory TTL cache
 ├── letterboxd/
 │   ├── http.ts          # fetch wrapper with User-Agent
-│   ├── scraper.ts       # watchlist / diary / lists parsing (cheerio)
+│   ├── scraper.ts       # watchlist / list parsing (cheerio)
 │   ├── film.ts          # film slug → IMDB / TMDB ID
 │   └── types.ts
 ├── stremio/
