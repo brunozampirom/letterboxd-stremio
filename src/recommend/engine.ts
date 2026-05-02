@@ -5,7 +5,6 @@ import { fetchSeedFilms, RssEntry } from '../letterboxd/rss';
 import { fetchWatchlist } from '../letterboxd/scraper';
 import { LetterboxdFilm } from '../letterboxd/types';
 import {
-  fetchDiscoverByGenre,
   fetchMovieDetails,
   fetchRecommendations,
   fetchSimilar,
@@ -21,18 +20,28 @@ const ENGINE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_MIN_RATING = 4.0;
 const DEFAULT_MAX_RESULTS = 100;
 
-// Quality threshold for TMDB candidates.
-const MIN_VOTE_AVERAGE = 6.5;
-const MIN_VOTE_COUNT = 100;
+// Quality threshold for TMDB candidates. Loosened compared to the
+// initial cut so the catalog has more breathing room — the mainstream
+// penalty below already trims the obvious classics, so we don't need
+// to throw out indie/cult picks at the candidate stage too.
+const MIN_VOTE_AVERAGE = 6.0;
+const MIN_VOTE_COUNT = 50;
 
 // Per-source weights. Recommendations is collaborative-filtered
 // ("users who watched this also watched") and tends to be a stronger
 // signal than similar (metadata-based).
 const SIMILAR_WEIGHT = 0.8;
 const RECOMMENDATIONS_WEIGHT = 1.2;
-// Discover is the broadest source (TMDB's top of a genre); kept low
-// so it diversifies the pool without dominating it.
-const DISCOVER_WEIGHT_PER_MATCH = 0.3;
+
+// Mainstream penalty. The same handful of all-time-classic films
+// (Shawshank, Godfather, etc.) appear as similar/recommended for
+// almost every drama and drown out genuinely surprising picks. Films
+// with a lot of TMDB votes get their score attenuated so films most
+// people have seen don't camp the top of the catalog. Capped at a
+// 50% reduction so a strong signal still wins.
+const MAINSTREAM_PENALTY_FLOOR = 5000;
+const MAINSTREAM_PENALTY_FACTOR = 0.25;
+const MAINSTREAM_PENALTY_MIN = 0.5;
 
 // Genre overlap boost on candidates.
 const GENRE_BONUS_PER_MATCH = 0.4;
@@ -77,6 +86,13 @@ function genreOverlap(candidate: TmdbSimilarResult, preferred: Set<number>): num
     if (preferred.has(gid) && ++matches >= MAX_GENRE_MATCH) break;
   }
   return matches;
+}
+
+function mainstreamMultiplier(voteCount?: number): number {
+  if (!voteCount || voteCount <= MAINSTREAM_PENALTY_FLOOR) return 1;
+  const ratio = voteCount / MAINSTREAM_PENALTY_FLOOR;
+  const reduction = MAINSTREAM_PENALTY_FACTOR * Math.log10(ratio);
+  return Math.max(MAINSTREAM_PENALTY_MIN, 1 - reduction);
 }
 
 async function buildPreferredGenres(
@@ -132,7 +148,8 @@ function addCandidate(
 ) {
   if (!passesQuality(r)) return;
   const matches = genreOverlap(r, preferredGenres);
-  const contribution = baseContribution + matches * GENRE_BONUS_PER_MATCH;
+  const raw = baseContribution + matches * GENRE_BONUS_PER_MATCH;
+  const contribution = raw * mainstreamMultiplier(r.voteCount);
   candidates.set(r.tmdbId, (candidates.get(r.tmdbId) ?? 0) + contribution);
 }
 
@@ -181,29 +198,6 @@ async function expandSimilars(
   return candidates;
 }
 
-async function expandDiscover(
-  preferredGenres: Set<number>,
-  candidates: Map<string, number>,
-): Promise<void> {
-  if (preferredGenres.size === 0) return;
-  const seenForDiscover = new Set<string>();
-  await mapPool([...preferredGenres], 3, async (gid) => {
-    try {
-      const results = await fetchDiscoverByGenre(gid);
-      for (const r of results) {
-        if (seenForDiscover.has(r.tmdbId)) continue;
-        seenForDiscover.add(r.tmdbId);
-        // Discover already filters by genre, so we don't add the
-        // genre-overlap bonus on top of the discover weight (would
-        // double-count). Use a flat per-match contribution.
-        addCandidate(candidates, r, DISCOVER_WEIGHT_PER_MATCH, new Set());
-      }
-    } catch (err) {
-      console.warn(`[engine] discover genre ${gid} failed:`, err);
-    }
-  });
-}
-
 async function resolveImdbIds(tmdbIds: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   await mapPool(tmdbIds, DETAILS_FETCH_CONCURRENCY, async (tmdbId) => {
@@ -234,13 +228,12 @@ export async function recommend(
       const preferredGenres = await buildPreferredGenres(baseEntries, watchlist).catch(() => new Set<number>());
 
       const candidateScores = await expandSimilars(baseEntries, preferredGenres);
-      await expandDiscover(preferredGenres, candidateScores);
 
       for (const baseId of baseTmdbIds) candidateScores.delete(baseId);
 
       const sorted = [...candidateScores.entries()]
         .sort((a, b) => b[1] - a[1])
-        .slice(0, Math.ceil(maxResults * 1.5));
+        .slice(0, Math.ceil(maxResults * 2.5));
 
       const tmdbIds = sorted.map(([id]) => id);
       const imdbMap = await resolveImdbIds(tmdbIds);

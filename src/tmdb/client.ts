@@ -66,20 +66,34 @@ function mapList(data: TmdbListResponse | null): TmdbSimilarResult[] {
   }));
 }
 
+async function fetchListPages(path: string, pages: number): Promise<TmdbSimilarResult[]> {
+  const calls: Promise<TmdbListResponse | null>[] = [];
+  for (let p = 1; p <= pages; p++) {
+    calls.push(tmdbGet<TmdbListResponse>(`${path}?language=en-US&page=${p}`));
+  }
+  const responses = await Promise.all(calls);
+  const seen = new Set<string>();
+  const results: TmdbSimilarResult[] = [];
+  for (const data of responses) {
+    for (const item of mapList(data)) {
+      if (seen.has(item.tmdbId)) continue;
+      seen.add(item.tmdbId);
+      results.push(item);
+    }
+  }
+  return results;
+}
+
 export async function fetchSimilar(tmdbId: string): Promise<TmdbSimilarResult[]> {
-  return getOrFetch(`tmdb:similar:${tmdbId}`, SIMILAR_TTL_MS, async () => {
-    const data = await tmdbGet<TmdbListResponse>(`/movie/${tmdbId}/similar?language=en-US&page=1`);
-    return mapList(data);
-  });
+  return getOrFetch(`tmdb:similar:${tmdbId}`, SIMILAR_TTL_MS, () =>
+    fetchListPages(`/movie/${tmdbId}/similar`, 2),
+  );
 }
 
 export async function fetchRecommendations(tmdbId: string): Promise<TmdbSimilarResult[]> {
-  return getOrFetch(`tmdb:recs:${tmdbId}`, SIMILAR_TTL_MS, async () => {
-    const data = await tmdbGet<TmdbListResponse>(
-      `/movie/${tmdbId}/recommendations?language=en-US&page=1`,
-    );
-    return mapList(data);
-  });
+  return getOrFetch(`tmdb:recs:${tmdbId}`, SIMILAR_TTL_MS, () =>
+    fetchListPages(`/movie/${tmdbId}/recommendations`, 2),
+  );
 }
 
 export async function fetchDiscoverByGenre(genreId: number): Promise<TmdbSimilarResult[]> {
