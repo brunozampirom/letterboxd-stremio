@@ -1,4 +1,5 @@
 import { CURATED_LISTS } from '../curated/lists';
+import { buildExclusionSet } from '../letterboxd/exclusion';
 import { resolveFilmIds } from '../letterboxd/film';
 import {
   fetchDiary,
@@ -21,23 +22,6 @@ import { CatalogResponse, StremioMetaPreview, StremioType } from './types';
 const RESOLVE_CONCURRENCY = 6;
 const ENRICH_CONCURRENCY = 8;
 const CURATED_DISPLAY_LIMIT = 100;
-
-async function buildUserExclusionSet(username: string): Promise<Set<string>> {
-  const [watchlist, diary] = await Promise.all([
-    fetchWatchlist(username).catch(() => []),
-    fetchDiary(username).catch(() => []),
-  ]);
-  const seen = new Set<string>();
-  await mapPool([...watchlist, ...diary], RESOLVE_CONCURRENCY, async (film) => {
-    try {
-      const ids = await resolveFilmIds(film.slug);
-      if (ids.imdbId) seen.add(ids.imdbId);
-    } catch {
-      /* ignore */
-    }
-  });
-  return seen;
-}
 
 async function filmsToMetas(
   films: LetterboxdFilm[],
@@ -125,7 +109,7 @@ export async function handleCatalog(
 
     const [films, excluded] = await Promise.all([
       fetchListFilms(list.owner, list.slug),
-      buildUserExclusionSet(username),
+      buildExclusionSet(username),
     ]);
 
     const withImdb = await mapPool(films, RESOLVE_CONCURRENCY, async (film) => {

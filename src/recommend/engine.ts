@@ -1,7 +1,6 @@
 import { getOrFetch } from '../cache';
-import { resolveFilmIds } from '../letterboxd/film';
+import { buildExclusionSet } from '../letterboxd/exclusion';
 import { fetchSeedFilms, RssEntry } from '../letterboxd/rss';
-import { fetchDiary, fetchWatchlist } from '../letterboxd/scraper';
 import { fetchRecommendations, fetchSimilar, isConfigured, resolveImdbId } from '../tmdb/client';
 import { mapPool } from '../util/pool';
 
@@ -19,28 +18,6 @@ export type Recommendation = {
 
 export function isEnabled(): boolean {
   return isConfigured();
-}
-
-async function buildExclusionSet(username: string, baseTmdbIds: Set<string>): Promise<Set<string>> {
-  const excluded = new Set<string>();
-  excluded.add('exclude');
-  const [watchlist, diary] = await Promise.all([
-    fetchWatchlist(username).catch(() => []),
-    fetchDiary(username).catch(() => []),
-  ]);
-
-  const candidates = [...watchlist, ...diary];
-  await mapPool(candidates, IMDB_RESOLVE_CONCURRENCY, async (film) => {
-    try {
-      const ids = await resolveFilmIds(film.slug);
-      if (ids.imdbId) excluded.add(ids.imdbId);
-      if (ids.tmdbId) baseTmdbIds.add(ids.tmdbId);
-    } catch {
-      /* ignore */
-    }
-  });
-  excluded.delete('exclude');
-  return excluded;
 }
 
 async function expandSimilars(base: RssEntry[]): Promise<Map<string, number>> {
@@ -89,9 +66,10 @@ export async function recommend(
     if (baseEntries.length === 0) return [];
 
     const baseTmdbIds = new Set(baseEntries.map((e) => e.tmdbId));
-    const excludedImdb = await buildExclusionSet(username, baseTmdbIds);
-
-    const candidateScores = await expandSimilars(baseEntries);
+    const [excludedImdb, candidateScores] = await Promise.all([
+      buildExclusionSet(username),
+      expandSimilars(baseEntries),
+    ]);
 
     for (const baseId of baseTmdbIds) candidateScores.delete(baseId);
 
