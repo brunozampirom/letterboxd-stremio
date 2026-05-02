@@ -38,10 +38,10 @@ const RECOMMENDATIONS_WEIGHT = 1.2;
 // almost every drama and drown out genuinely surprising picks. Films
 // with a lot of TMDB votes get their score attenuated so films most
 // people have seen don't camp the top of the catalog. Capped at a
-// 50% reduction so a strong signal still wins.
-const MAINSTREAM_PENALTY_FLOOR = 5000;
-const MAINSTREAM_PENALTY_FACTOR = 0.25;
-const MAINSTREAM_PENALTY_MIN = 0.5;
+// 60% reduction so a strong signal still wins.
+const MAINSTREAM_PENALTY_FLOOR = 2000;
+const MAINSTREAM_PENALTY_FACTOR = 0.4;
+const MAINSTREAM_PENALTY_MIN = 0.4;
 
 // Genre overlap boost on candidates.
 const GENRE_BONUS_PER_MATCH = 0.4;
