@@ -1,3 +1,4 @@
+import * as cheerio from 'cheerio';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { clearForUser } from '../cache';
 import { fetchPage, LetterboxdError } from '../letterboxd/http';
@@ -36,6 +37,23 @@ function countPosters(html: string): number {
   return matches ? matches.length : 0;
 }
 
+function extractLists(html: string, owner: string): Array<{ slug: string; title: string }> {
+  const $ = cheerio.load(html);
+  const seen = new Set<string>();
+  const lists: Array<{ slug: string; title: string }> = [];
+  $(`a[href^="/${owner}/list/"]`).each((_, el) => {
+    const href = $(el).attr('href') ?? '';
+    const match = href.match(new RegExp(`^/${owner}/list/([^/]+)/?$`));
+    if (!match) return;
+    const slug = match[1];
+    if (seen.has(slug)) return;
+    seen.add(slug);
+    const title = $(el).text().trim() || $(el).attr('title') || slug;
+    if (title.length > 0) lists.push({ slug, title });
+  });
+  return lists;
+}
+
 export async function handleProbe(req: IncomingMessage, res: ServerResponse, query: URLSearchParams) {
   if (!isAuthorized(req)) {
     sendNotFound(res);
@@ -65,7 +83,8 @@ export async function handleProbe(req: IncomingMessage, res: ServerResponse, que
     }
   }
 
-  const body = {
+  const parseMode = query.get('parse');
+  const body: Record<string, unknown> = {
     path,
     status,
     bytes: html.length,
@@ -74,6 +93,12 @@ export async function handleProbe(req: IncomingMessage, res: ServerResponse, que
     sample: html.slice(0, 400),
     error: errorMessage,
   };
+
+  if (parseMode === 'lists' && status === 200) {
+    const ownerMatch = path.match(/^\/([^/]+)\//);
+    const owner = ownerMatch ? ownerMatch[1] : '';
+    body.lists = owner ? extractLists(html, owner) : [];
+  }
 
   res.writeHead(200, {
     'Content-Type': 'application/json; charset=utf-8',
