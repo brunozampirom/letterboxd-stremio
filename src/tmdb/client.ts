@@ -84,14 +84,17 @@ async function fetchListPages(path: string, pages: number): Promise<TmdbSimilarR
   return results;
 }
 
+// Bumped to v2 when the TmdbSimilarResult shape grew vote_count and
+// genre_ids; the previous cache entries lacked those fields and were
+// failing the quality filter silently. New key forces a clean re-fetch.
 export async function fetchSimilar(tmdbId: string): Promise<TmdbSimilarResult[]> {
-  return getOrFetch(`tmdb:similar:${tmdbId}`, SIMILAR_TTL_MS, () =>
+  return getOrFetch(`tmdb:similar:v2:${tmdbId}`, SIMILAR_TTL_MS, () =>
     fetchListPages(`/movie/${tmdbId}/similar`, 2),
   );
 }
 
 export async function fetchRecommendations(tmdbId: string): Promise<TmdbSimilarResult[]> {
-  return getOrFetch(`tmdb:recs:${tmdbId}`, SIMILAR_TTL_MS, () =>
+  return getOrFetch(`tmdb:recs:v2:${tmdbId}`, SIMILAR_TTL_MS, () =>
     fetchListPages(`/movie/${tmdbId}/recommendations`, 2),
   );
 }
