@@ -82,10 +82,14 @@ async function buildPreferredGenres(
   const freq = new Map<number, number>();
 
   await mapPool(seeds, DETAILS_FETCH_CONCURRENCY, async (entry) => {
-    const details = await fetchMovieDetails(entry.tmdbId);
-    if (!details) return;
-    for (const gid of details.genreIds) {
-      freq.set(gid, (freq.get(gid) ?? 0) + 1);
+    try {
+      const details = await fetchMovieDetails(entry.tmdbId);
+      if (!details) return;
+      for (const gid of details.genreIds) {
+        freq.set(gid, (freq.get(gid) ?? 0) + 1);
+      }
+    } catch (err) {
+      console.warn(`[engine] preferred genres seed ${entry.tmdbId} failed:`, err);
     }
   });
 
@@ -134,34 +138,38 @@ async function expandSimilars(
   const candidates = new Map<string, number>();
 
   await mapPool(base, SIMILAR_FETCH_CONCURRENCY, async (entry) => {
-    const [similar, recs] = await Promise.all([
-      fetchSimilar(entry.tmdbId),
-      fetchRecommendations(entry.tmdbId),
-    ]);
-    const weight = seedWeight(entry);
+    try {
+      const [similar, recs] = await Promise.all([
+        fetchSimilar(entry.tmdbId).catch(() => []),
+        fetchRecommendations(entry.tmdbId).catch(() => []),
+      ]);
+      const weight = seedWeight(entry);
 
-    // Per-seed dedupe: take the higher of similar vs recs weighting
-    // so the same film isn't counted twice from one seed but its
-    // strongest signal (recs > similar) wins.
-    const bestForEntry = new Map<string, { contribution: number; result: TmdbSimilarResult }>();
+      // Per-seed dedupe: take the higher of similar vs recs weighting
+      // so the same film isn't counted twice from one seed but its
+      // strongest signal (recs > similar) wins.
+      const bestForEntry = new Map<string, { contribution: number; result: TmdbSimilarResult }>();
 
-    for (const r of similar) {
-      if (r.tmdbId === entry.tmdbId) continue;
-      if (!passesQuality(r)) continue;
-      const c = weight * SIMILAR_WEIGHT;
-      const prev = bestForEntry.get(r.tmdbId);
-      if (!prev || c > prev.contribution) bestForEntry.set(r.tmdbId, { contribution: c, result: r });
-    }
-    for (const r of recs) {
-      if (r.tmdbId === entry.tmdbId) continue;
-      if (!passesQuality(r)) continue;
-      const c = weight * RECOMMENDATIONS_WEIGHT;
-      const prev = bestForEntry.get(r.tmdbId);
-      if (!prev || c > prev.contribution) bestForEntry.set(r.tmdbId, { contribution: c, result: r });
-    }
+      for (const r of similar) {
+        if (r.tmdbId === entry.tmdbId) continue;
+        if (!passesQuality(r)) continue;
+        const c = weight * SIMILAR_WEIGHT;
+        const prev = bestForEntry.get(r.tmdbId);
+        if (!prev || c > prev.contribution) bestForEntry.set(r.tmdbId, { contribution: c, result: r });
+      }
+      for (const r of recs) {
+        if (r.tmdbId === entry.tmdbId) continue;
+        if (!passesQuality(r)) continue;
+        const c = weight * RECOMMENDATIONS_WEIGHT;
+        const prev = bestForEntry.get(r.tmdbId);
+        if (!prev || c > prev.contribution) bestForEntry.set(r.tmdbId, { contribution: c, result: r });
+      }
 
-    for (const { contribution, result } of bestForEntry.values()) {
-      addCandidate(candidates, result, contribution, preferredGenres);
+      for (const { contribution, result } of bestForEntry.values()) {
+        addCandidate(candidates, result, contribution, preferredGenres);
+      }
+    } catch (err) {
+      console.warn(`[engine] expand seed ${entry.tmdbId} failed:`, err);
     }
   });
 
@@ -175,14 +183,18 @@ async function expandDiscover(
   if (preferredGenres.size === 0) return;
   const seenForDiscover = new Set<string>();
   await mapPool([...preferredGenres], 3, async (gid) => {
-    const results = await fetchDiscoverByGenre(gid);
-    for (const r of results) {
-      if (seenForDiscover.has(r.tmdbId)) continue;
-      seenForDiscover.add(r.tmdbId);
-      // Discover already filters by genre, so we don't add the
-      // genre-overlap bonus on top of the discover weight (would
-      // double-count). Use a flat per-match contribution.
-      addCandidate(candidates, r, DISCOVER_WEIGHT_PER_MATCH, new Set());
+    try {
+      const results = await fetchDiscoverByGenre(gid);
+      for (const r of results) {
+        if (seenForDiscover.has(r.tmdbId)) continue;
+        seenForDiscover.add(r.tmdbId);
+        // Discover already filters by genre, so we don't add the
+        // genre-overlap bonus on top of the discover weight (would
+        // double-count). Use a flat per-match contribution.
+        addCandidate(candidates, r, DISCOVER_WEIGHT_PER_MATCH, new Set());
+      }
+    } catch (err) {
+      console.warn(`[engine] discover genre ${gid} failed:`, err);
     }
   });
 }
@@ -205,37 +217,42 @@ export async function recommend(
   if (!isConfigured()) return [];
 
   return getOrFetch(`recommend:${username}:${minRating}:${maxResults}`, ENGINE_CACHE_TTL_MS, async () => {
-    const [baseEntries, watchlist, excludedImdb] = await Promise.all([
-      fetchSeedFilms(username, minRating),
-      fetchWatchlist(username).catch(() => []),
-      buildExclusionSet(username),
-    ]);
-    if (baseEntries.length === 0) return [];
+    try {
+      const [baseEntries, watchlist, excludedImdb] = await Promise.all([
+        fetchSeedFilms(username, minRating).catch(() => []),
+        fetchWatchlist(username).catch(() => []),
+        buildExclusionSet(username).catch(() => new Set<string>()),
+      ]);
+      if (baseEntries.length === 0) return [];
 
-    const baseTmdbIds = new Set(baseEntries.map((e) => e.tmdbId));
-    const preferredGenres = await buildPreferredGenres(baseEntries, watchlist);
+      const baseTmdbIds = new Set(baseEntries.map((e) => e.tmdbId));
+      const preferredGenres = await buildPreferredGenres(baseEntries, watchlist).catch(() => new Set<number>());
 
-    const candidateScores = await expandSimilars(baseEntries, preferredGenres);
-    await expandDiscover(preferredGenres, candidateScores);
+      const candidateScores = await expandSimilars(baseEntries, preferredGenres);
+      await expandDiscover(preferredGenres, candidateScores);
 
-    for (const baseId of baseTmdbIds) candidateScores.delete(baseId);
+      for (const baseId of baseTmdbIds) candidateScores.delete(baseId);
 
-    const sorted = [...candidateScores.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, Math.ceil(maxResults * 1.5));
+      const sorted = [...candidateScores.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, Math.ceil(maxResults * 1.5));
 
-    const tmdbIds = sorted.map(([id]) => id);
-    const imdbMap = await resolveImdbIds(tmdbIds);
+      const tmdbIds = sorted.map(([id]) => id);
+      const imdbMap = await resolveImdbIds(tmdbIds);
 
-    const results: Recommendation[] = [];
-    for (const [tmdbId, score] of sorted) {
-      const imdbId = imdbMap.get(tmdbId);
-      if (!imdbId) continue;
-      if (excludedImdb.has(imdbId)) continue;
-      results.push({ imdbId, score });
-      if (results.length >= maxResults) break;
+      const results: Recommendation[] = [];
+      for (const [tmdbId, score] of sorted) {
+        const imdbId = imdbMap.get(tmdbId);
+        if (!imdbId) continue;
+        if (excludedImdb.has(imdbId)) continue;
+        results.push({ imdbId, score });
+        if (results.length >= maxResults) break;
+      }
+
+      return results;
+    } catch (err) {
+      console.error('[recommend] engine failed:', err);
+      return [];
     }
-
-    return results;
   });
 }

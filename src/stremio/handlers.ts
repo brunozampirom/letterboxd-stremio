@@ -70,25 +70,35 @@ export async function handleCatalog(
   }
 
   if (id === CATALOG_RECOMMENDED) {
-    const recs = await recommend(username);
+    let recs: { imdbId: string; score: number }[] = [];
+    try {
+      recs = await recommend(username);
+    } catch (err) {
+      console.warn('[handlers] recommend failed:', err);
+      return { metas: [] };
+    }
     const enriched = await mapPool(
       recs,
       ENRICH_CONCURRENCY,
       async ({ imdbId }): Promise<StremioMetaPreview | null> => {
-        const classified = await classifyAndEnrich(imdbId);
-        if (!classified || classified.type !== wantedType) return null;
-        const m = classified.meta;
-        return {
-          id: imdbId,
-          type: wantedType,
-          name: m.name ?? imdbId,
-          releaseInfo: m.releaseInfo,
-          poster: m.poster,
-          background: m.background,
-          description: m.description,
-          imdbRating: m.imdbRating,
-          genres: m.genres,
-        };
+        try {
+          const classified = await classifyAndEnrich(imdbId);
+          if (!classified || classified.type !== wantedType) return null;
+          const m = classified.meta;
+          return {
+            id: imdbId,
+            type: wantedType,
+            name: m.name ?? imdbId,
+            releaseInfo: m.releaseInfo,
+            poster: m.poster,
+            background: m.background,
+            description: m.description,
+            imdbRating: m.imdbRating,
+            genres: m.genres,
+          };
+        } catch {
+          return null;
+        }
       },
     );
     return { metas: enriched.filter((m): m is StremioMetaPreview => m !== null) };
@@ -135,6 +145,7 @@ export async function handleCatalog(
           background: m.background,
           description: m.description,
           imdbRating: m.imdbRating,
+          genres: m.genres,
         };
       },
     );
