@@ -1,4 +1,4 @@
-import { getOrFetch } from '../cache';
+import { cacheIfNonEmpty, getOrFetch } from '../cache';
 import { buildExclusionSet } from '../letterboxd/exclusion';
 import { resolveFilmIds } from '../letterboxd/film';
 import { fetchSeedFilms, RssEntry } from '../letterboxd/rss';
@@ -216,41 +216,51 @@ export async function recommend(
   if (!isConfigured()) return [];
 
   return getOrFetch(`recommend:${username}:${minRating}:${maxResults}`, ENGINE_CACHE_TTL_MS, async () => {
-    try {
-      const [baseEntries, watchlist, excludedImdb] = await Promise.all([
-        fetchSeedFilms(username, minRating).catch(() => []),
-        fetchWatchlist(username).catch(() => []),
-        buildExclusionSet(username).catch(() => new Set<string>()),
-      ]);
-      if (baseEntries.length === 0) return [];
+    return await computeRecommendations(username, minRating, maxResults);
+  }, cacheIfNonEmpty);
+}
 
-      const baseTmdbIds = new Set(baseEntries.map((e) => e.tmdbId));
-      const preferredGenres = await buildPreferredGenres(baseEntries, watchlist).catch(() => new Set<number>());
+async function computeRecommendations(
+  username: string,
+  minRating: number,
+  maxResults: number,
+): Promise<Recommendation[]> {
+  try {
+    const [baseEntries, watchlist, excludedImdb] = await Promise.all([
+      fetchSeedFilms(username, minRating).catch(() => []),
+      fetchWatchlist(username).catch(() => []),
+      buildExclusionSet(username).catch(() => new Set<string>()),
+    ]);
+    if (baseEntries.length === 0) return [];
 
-      const candidateScores = await expandSimilars(baseEntries, preferredGenres);
+    const baseTmdbIds = new Set(baseEntries.map((e) => e.tmdbId));
+    const preferredGenres = await buildPreferredGenres(baseEntries, watchlist).catch(
+      () => new Set<number>(),
+    );
 
-      for (const baseId of baseTmdbIds) candidateScores.delete(baseId);
+    const candidateScores = await expandSimilars(baseEntries, preferredGenres);
 
-      const sorted = [...candidateScores.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, Math.ceil(maxResults * 2.5));
+    for (const baseId of baseTmdbIds) candidateScores.delete(baseId);
 
-      const tmdbIds = sorted.map(([id]) => id);
-      const imdbMap = await resolveImdbIds(tmdbIds);
+    const sorted = [...candidateScores.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, Math.ceil(maxResults * 2.5));
 
-      const results: Recommendation[] = [];
-      for (const [tmdbId, score] of sorted) {
-        const imdbId = imdbMap.get(tmdbId);
-        if (!imdbId) continue;
-        if (excludedImdb.has(imdbId)) continue;
-        results.push({ imdbId, score });
-        if (results.length >= maxResults) break;
-      }
+    const tmdbIds = sorted.map(([id]) => id);
+    const imdbMap = await resolveImdbIds(tmdbIds);
 
-      return results;
-    } catch (err) {
-      console.error('[recommend] engine failed:', err);
-      return [];
+    const results: Recommendation[] = [];
+    for (const [tmdbId, score] of sorted) {
+      const imdbId = imdbMap.get(tmdbId);
+      if (!imdbId) continue;
+      if (excludedImdb.has(imdbId)) continue;
+      results.push({ imdbId, score });
+      if (results.length >= maxResults) break;
     }
-  });
+
+    return results;
+  } catch (err) {
+    console.error('[recommend] engine failed:', err);
+    return [];
+  }
 }

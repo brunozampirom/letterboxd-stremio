@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { getOrFetch } from '../cache';
+import { cacheIfNonEmpty, getOrFetch } from '../cache';
 import { loadConfig } from '../config';
 import { fetchPage, LetterboxdError } from './http';
 import { LetterboxdFilm, LetterboxdList } from './types';
@@ -61,15 +61,21 @@ async function fetchPaginated(basePath: string, maxPages = 20): Promise<Letterbo
 
 export async function fetchWatchlist(username: string): Promise<LetterboxdFilm[]> {
   const { cacheTtlMs } = loadConfig();
-  return getOrFetch(`watchlist:${username}`, cacheTtlMs, () =>
-    fetchPaginated(`/${username}/watchlist/`),
+  return getOrFetch(
+    `watchlist:${username}`,
+    cacheTtlMs,
+    () => fetchPaginated(`/${username}/watchlist/`),
+    cacheIfNonEmpty,
   );
 }
 
 export async function fetchDiary(username: string): Promise<LetterboxdFilm[]> {
   const { cacheTtlMs } = loadConfig();
-  return getOrFetch(`diary:${username}`, cacheTtlMs, () =>
-    fetchPaginated(`/${username}/films/diary/`),
+  return getOrFetch(
+    `diary:${username}`,
+    cacheTtlMs,
+    () => fetchPaginated(`/${username}/films/diary/`),
+    cacheIfNonEmpty,
   );
 }
 
@@ -78,8 +84,11 @@ export async function fetchListFilms(
   listSlug: string,
 ): Promise<LetterboxdFilm[]> {
   const { cacheTtlMs } = loadConfig();
-  return getOrFetch(`list:${username}:${listSlug}`, cacheTtlMs, () =>
-    fetchPaginated(`/${username}/list/${listSlug}/`),
+  return getOrFetch(
+    `list:${username}:${listSlug}`,
+    cacheTtlMs,
+    () => fetchPaginated(`/${username}/list/${listSlug}/`),
+    cacheIfNonEmpty,
   );
 }
 

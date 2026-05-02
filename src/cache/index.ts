@@ -30,13 +30,21 @@ export async function getOrFetch<T>(
   key: string,
   ttlMs: number,
   fetcher: () => Promise<T>,
+  shouldCache?: (value: T) => boolean,
 ): Promise<T> {
   const hit = await get<T>(key);
   if (hit !== undefined) return hit;
   const value = await fetcher();
-  await set(key, value, ttlMs);
+  if (!shouldCache || shouldCache(value)) {
+    await set(key, value, ttlMs);
+  }
   return value;
 }
+
+// Helper: refuse to cache empty arrays. Useful for any scrape that
+// might return [] because of a transient 403/timeout — without this
+// guard a single bad fetch would poison the cache for the whole TTL.
+export const cacheIfNonEmpty = <T>(v: T[]): boolean => Array.isArray(v) && v.length > 0;
 
 export function clear(): void {
   memory.clear();

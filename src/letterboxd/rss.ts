@@ -1,4 +1,4 @@
-import { getOrFetch } from '../cache';
+import { cacheIfNonEmpty, getOrFetch } from '../cache';
 import { loadConfig } from '../config';
 import { fetchPage, LetterboxdError } from './http';
 
@@ -42,17 +42,22 @@ export function parseRss(xml: string): RssEntry[] {
 
 export async function fetchRssEntries(username: string): Promise<RssEntry[]> {
   const { cacheTtlMs } = loadConfig();
-  return getOrFetch(`rss:${username}`, cacheTtlMs, async () => {
-    try {
-      const xml = await fetchPage(`/${username}/rss/`);
-      return parseRss(xml);
-    } catch (err) {
-      if (err instanceof LetterboxdError && (err.status === 404 || err.status === 403)) {
-        return [];
+  return getOrFetch(
+    `rss:${username}`,
+    cacheTtlMs,
+    async () => {
+      try {
+        const xml = await fetchPage(`/${username}/rss/`);
+        return parseRss(xml);
+      } catch (err) {
+        if (err instanceof LetterboxdError && (err.status === 404 || err.status === 403)) {
+          return [];
+        }
+        throw err;
       }
-      throw err;
-    }
-  });
+    },
+    cacheIfNonEmpty,
+  );
 }
 
 export async function fetchSeedFilms(
