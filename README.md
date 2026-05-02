@@ -22,11 +22,18 @@ Enter your Letterboxd username and click **Install in Stremio**. That's it. The 
 
 - **Watchlist** as a Stremio catalog (Movies and Series, separated automatically)
 - **Diary** (films you've logged) as a Stremio catalog
+- **Recommendations** — films similar to the ones you rated 4★ or higher; powered by TMDB and your Letterboxd RSS feed (requires a free TMDB token)
 - **Custom lists** — every public list on your profile becomes a catalog
 - **Caching** — Upstash Redis when configured, in-memory fallback otherwise
 - **Per-IP rate limiting** when Upstash Redis is available
 - **Multi-tenant** — one deployment serves any number of users via URL-based config
 - **Self-hostable** — Docker, plain Node, or Vercel
+
+### Recommendations setup (optional)
+
+The Recommendations catalog reads your Letterboxd RSS feed (last ~50 logs) for entries you rated **4 stars or higher**, then fetches similar and recommended titles from **TMDB**. Aggregated scores are filtered against your watchlist and diary so you never see something you've already saved or watched.
+
+To enable it, set `TMDB_READ_TOKEN` (free token from https://www.themoviedb.org/settings/api). Without it, the catalog is simply omitted from the manifest and the addon continues to work for watchlist/diary.
 
 ---
 

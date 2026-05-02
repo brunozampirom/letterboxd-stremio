@@ -1,9 +1,11 @@
+import { isEnabled as recommendationsEnabled } from '../recommend/engine';
 import { StremioCatalog, StremioManifest, StremioType } from './types';
 
 const VERSION = '0.1.0';
 
 export const CATALOG_WATCHLIST = 'letterboxd-watchlist';
 export const CATALOG_DIARY = 'letterboxd-diary';
+export const CATALOG_RECOMMENDED = 'letterboxd-recommended';
 export const CATALOG_LIST_PREFIX = 'letterboxd-list-';
 
 const TYPES: StremioType[] = ['movie', 'series'];
@@ -17,6 +19,9 @@ export function buildManifest(username: string): StremioManifest {
     ...pair(CATALOG_WATCHLIST, `Letterboxd Watchlist – ${username}`),
     ...pair(CATALOG_DIARY, `Letterboxd Diary – ${username}`),
   ];
+  if (recommendationsEnabled()) {
+    catalogs.push(...pair(CATALOG_RECOMMENDED, `Letterboxd Recommended – ${username}`));
+  }
 
   return {
     id: `community.letterboxd-stremio.${username}`,

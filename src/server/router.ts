@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
 import { info as cacheInfo } from '../cache';
+import { isEnabled as recommendationsEnabled } from '../recommend/engine';
 import { handleCatalog } from '../stremio/handlers';
 import { buildManifest } from '../stremio/manifest';
 import { handleProbe } from './admin';
@@ -48,6 +49,7 @@ function sendHealth(res: ServerResponse) {
       version: VERSION,
       cache: cacheInfo(),
       rateLimit: ratelimitInfo(),
+      recommendations: { enabled: recommendationsEnabled(), source: 'tmdb' as const },
       adminConfigured: Boolean(process.env.ADMIN_TOKEN),
       uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),

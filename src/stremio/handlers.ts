@@ -5,11 +5,13 @@ import {
   fetchWatchlist,
 } from '../letterboxd/scraper';
 import { LetterboxdFilm } from '../letterboxd/types';
+import { recommend } from '../recommend/engine';
 import { mapPool } from '../util/pool';
 import { classifyAndEnrich } from './cinemeta';
 import {
   CATALOG_DIARY,
   CATALOG_LIST_PREFIX,
+  CATALOG_RECOMMENDED,
   CATALOG_WATCHLIST,
 } from './manifest';
 import { CatalogResponse, StremioMetaPreview, StremioType } from './types';
@@ -70,6 +72,30 @@ export async function handleCatalog(
   if (id === CATALOG_DIARY) {
     const films = await fetchDiary(username);
     return { metas: await filmsToMetas(films, wantedType) };
+  }
+
+  if (id === CATALOG_RECOMMENDED) {
+    const recs = await recommend(username);
+    const enriched = await mapPool(
+      recs,
+      ENRICH_CONCURRENCY,
+      async ({ imdbId }): Promise<StremioMetaPreview | null> => {
+        const classified = await classifyAndEnrich(imdbId);
+        if (!classified || classified.type !== wantedType) return null;
+        const m = classified.meta;
+        return {
+          id: imdbId,
+          type: wantedType,
+          name: m.name ?? imdbId,
+          releaseInfo: m.releaseInfo,
+          poster: m.poster,
+          background: m.background,
+          description: m.description,
+          imdbRating: m.imdbRating,
+        };
+      },
+    );
+    return { metas: enriched.filter((m): m is StremioMetaPreview => m !== null) };
   }
 
   if (id.startsWith(CATALOG_LIST_PREFIX)) {
