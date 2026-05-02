@@ -30,6 +30,7 @@ export type StremioMetaPreview = {
   background?: string;
   description?: string;
   imdbRating?: string;
+  genres?: string[];
 };
 
 export type CatalogResponse = { metas: StremioMetaPreview[] };

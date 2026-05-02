@@ -48,6 +48,7 @@ async function filmsToMetas(
         background: m.background,
         description: m.description,
         imdbRating: m.imdbRating,
+        genres: m.genres,
       };
     },
   );
@@ -86,6 +87,7 @@ export async function handleCatalog(
           background: m.background,
           description: m.description,
           imdbRating: m.imdbRating,
+          genres: m.genres,
         };
       },
     );
