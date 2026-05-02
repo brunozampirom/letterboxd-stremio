@@ -10,6 +10,7 @@ export type TmdbSimilarResult = {
   voteAverage?: number;
   voteCount?: number;
   genreIds: number[];
+  releaseYear?: number;
 };
 
 export type TmdbMovieDetails = {
@@ -52,8 +53,15 @@ type TmdbListResponse = {
     vote_average?: number;
     vote_count?: number;
     genre_ids?: number[];
+    release_date?: string;
   }>;
 };
+
+function parseYear(date?: string): number | undefined {
+  if (!date) return undefined;
+  const m = date.match(/^(\d{4})/);
+  return m ? Number.parseInt(m[1], 10) : undefined;
+}
 
 function mapList(data: TmdbListResponse | null): TmdbSimilarResult[] {
   if (!data?.results) return [];
@@ -63,6 +71,7 @@ function mapList(data: TmdbListResponse | null): TmdbSimilarResult[] {
     voteAverage: r.vote_average,
     voteCount: r.vote_count,
     genreIds: r.genre_ids ?? [],
+    releaseYear: parseYear(r.release_date),
   }));
 }
 
@@ -84,17 +93,17 @@ async function fetchListPages(path: string, pages: number): Promise<TmdbSimilarR
   return results;
 }
 
-// Bumped to v2 when the TmdbSimilarResult shape grew vote_count and
-// genre_ids; the previous cache entries lacked those fields and were
-// failing the quality filter silently. New key forces a clean re-fetch.
+// v3: added releaseYear to the result shape; older entries didn't
+// carry it and the engine now needs it to reserve slots for recent
+// films. Forces a clean re-fetch.
 export async function fetchSimilar(tmdbId: string): Promise<TmdbSimilarResult[]> {
-  return getOrFetch(`tmdb:similar:v2:${tmdbId}`, SIMILAR_TTL_MS, () =>
+  return getOrFetch(`tmdb:similar:v3:${tmdbId}`, SIMILAR_TTL_MS, () =>
     fetchListPages(`/movie/${tmdbId}/similar`, 2),
   );
 }
 
 export async function fetchRecommendations(tmdbId: string): Promise<TmdbSimilarResult[]> {
-  return getOrFetch(`tmdb:recs:v2:${tmdbId}`, SIMILAR_TTL_MS, () =>
+  return getOrFetch(`tmdb:recs:v3:${tmdbId}`, SIMILAR_TTL_MS, () =>
     fetchListPages(`/movie/${tmdbId}/recommendations`, 2),
   );
 }
@@ -106,6 +115,20 @@ export async function fetchDiscoverByGenre(genreId: number): Promise<TmdbSimilar
     );
     return mapList(data);
   });
+}
+
+const RECENT_DISCOVER_TTL_MS = 24 * 60 * 60 * 1000;
+
+export async function fetchRecentByGenre(genreId: number): Promise<TmdbSimilarResult[]> {
+  // Window: last 4 calendar years. Cached for a day so the catalog
+  // stays current without thrashing TMDB on every refresh.
+  const yearGte = new Date().getFullYear() - 4;
+  return getOrFetch(`tmdb:recent:${yearGte}:${genreId}`, RECENT_DISCOVER_TTL_MS, () =>
+    fetchListPages(
+      `/discover/movie?with_genres=${genreId}&primary_release_date.gte=${yearGte}-01-01&sort_by=vote_average.desc&vote_count.gte=200`,
+      1,
+    ),
+  );
 }
 
 type TmdbDetailsResponse = {
