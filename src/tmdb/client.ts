@@ -82,6 +82,15 @@ export async function fetchRecommendations(tmdbId: string): Promise<TmdbSimilarR
   });
 }
 
+export async function fetchDiscoverByGenre(genreId: number): Promise<TmdbSimilarResult[]> {
+  return getOrFetch(`tmdb:discover:${genreId}`, SIMILAR_TTL_MS, async () => {
+    const data = await tmdbGet<TmdbListResponse>(
+      `/discover/movie?language=en-US&with_genres=${genreId}&sort_by=vote_average.desc&vote_count.gte=500&page=1`,
+    );
+    return mapList(data);
+  });
+}
+
 type TmdbDetailsResponse = {
   id?: number;
   vote_average?: number;
