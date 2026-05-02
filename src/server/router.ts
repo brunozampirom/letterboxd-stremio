@@ -48,6 +48,7 @@ function sendHealth(res: ServerResponse) {
       version: VERSION,
       cache: cacheInfo(),
       rateLimit: ratelimitInfo(),
+      adminConfigured: Boolean(process.env.ADMIN_TOKEN),
       uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
     }),
