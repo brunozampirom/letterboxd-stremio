@@ -1,5 +1,5 @@
 import * as memory from './memory';
-import { getRedis, redisGet, redisSet } from './redis';
+import { getRedis, redisDeleteByPattern, redisGet, redisSet } from './redis';
 
 const useRedis = getRedis() !== null;
 console.log(`[cache] backend: ${useRedis ? 'redis (upstash)' : 'memory'}`);
@@ -40,4 +40,24 @@ export async function getOrFetch<T>(
 
 export function clear(): void {
   memory.clear();
+}
+
+const PER_USER_PATTERNS = (username: string) => [
+  `watchlist:${username}`,
+  `diary:${username}`,
+  `lists:${username}`,
+  `rss:${username}`,
+  `recommend:${username}:*`,
+];
+
+export async function clearForUser(username: string): Promise<number> {
+  if (!useRedis) {
+    memory.clear();
+    return -1;
+  }
+  let total = 0;
+  for (const pattern of PER_USER_PATTERNS(username)) {
+    total += await redisDeleteByPattern(pattern);
+  }
+  return total;
 }

@@ -1,4 +1,5 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
+import { clearForUser } from '../cache';
 import { fetchPage, LetterboxdError } from '../letterboxd/http';
 
 const CORS_HEADERS = {
@@ -7,12 +8,19 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type, x-admin-token',
 };
 
+const USERNAME_RE = /^[a-z0-9_]{1,32}$/i;
+
 function isAuthorized(req: IncomingMessage): boolean {
   const expected = process.env.ADMIN_TOKEN;
   if (!expected) return false;
   const provided = req.headers['x-admin-token'];
   if (typeof provided !== 'string') return false;
   return provided === expected;
+}
+
+function sendNotFound(res: ServerResponse) {
+  res.writeHead(404, { 'Content-Type': 'text/plain', ...CORS_HEADERS });
+  res.end('Not found');
 }
 
 function isCloudflareChallenge(html: string): boolean {
@@ -30,8 +38,7 @@ function countPosters(html: string): number {
 
 export async function handleProbe(req: IncomingMessage, res: ServerResponse, query: URLSearchParams) {
   if (!isAuthorized(req)) {
-    res.writeHead(404, { 'Content-Type': 'text/plain', ...CORS_HEADERS });
-    res.end('Not found');
+    sendNotFound(res);
     return;
   }
 
@@ -74,4 +81,26 @@ export async function handleProbe(req: IncomingMessage, res: ServerResponse, que
     ...CORS_HEADERS,
   });
   res.end(JSON.stringify(body, null, 2));
+}
+
+export async function handleRefresh(req: IncomingMessage, res: ServerResponse, query: URLSearchParams) {
+  if (!isAuthorized(req)) {
+    sendNotFound(res);
+    return;
+  }
+
+  const user = query.get('user');
+  if (!user || !USERNAME_RE.test(user)) {
+    res.writeHead(400, { 'Content-Type': 'application/json', ...CORS_HEADERS });
+    res.end(JSON.stringify({ error: 'missing or invalid `user` query parameter' }));
+    return;
+  }
+
+  const deleted = await clearForUser(user);
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    ...CORS_HEADERS,
+  });
+  res.end(JSON.stringify({ user, deletedKeys: deleted }, null, 2));
 }

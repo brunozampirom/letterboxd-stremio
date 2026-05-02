@@ -5,7 +5,7 @@ import { info as cacheInfo } from '../cache';
 import { isEnabled as recommendationsEnabled } from '../recommend/engine';
 import { handleCatalog } from '../stremio/handlers';
 import { buildManifest, FLAG_RE, parseFlags } from '../stremio/manifest';
-import { handleProbe } from './admin';
+import { handleProbe, handleRefresh } from './admin';
 import { Bucket, check, info as ratelimitInfo, LimitResult } from './ratelimit';
 
 const VERSION = '0.1.0';
@@ -127,6 +127,11 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
   if (segments[0] === 'admin' && segments[1] === 'probe' && segments.length === 2) {
     await handleProbe(req, res, new URLSearchParams(search));
+    return;
+  }
+
+  if (segments[0] === 'admin' && segments[1] === 'refresh' && segments.length === 2) {
+    await handleRefresh(req, res, new URLSearchParams(search));
     return;
   }
 

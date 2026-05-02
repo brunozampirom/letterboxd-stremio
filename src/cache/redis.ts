@@ -41,3 +41,23 @@ export async function redisSet<T>(key: string, value: T, ttlMs: number): Promise
     console.warn('[cache:redis] set failed', err);
   }
 }
+
+export async function redisDeleteByPattern(pattern: string): Promise<number> {
+  const r = getRedis();
+  if (!r) return 0;
+  let cursor = 0;
+  let deleted = 0;
+  try {
+    do {
+      const [next, keys] = await r.scan(cursor, { match: pattern, count: 100 });
+      if (keys.length > 0) {
+        await r.del(...keys);
+        deleted += keys.length;
+      }
+      cursor = Number(next);
+    } while (cursor !== 0);
+  } catch (err) {
+    console.warn('[cache:redis] delete by pattern failed', err);
+  }
+  return deleted;
+}

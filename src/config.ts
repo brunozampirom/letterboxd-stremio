@@ -9,7 +9,7 @@ const DEFAULT_USER_AGENT =
 
 export function loadConfig(): Config {
   const port = Number.parseInt(process.env.PORT ?? '7777', 10);
-  const ttlMinutes = Number.parseInt(process.env.CACHE_TTL_MINUTES ?? '60', 10);
+  const ttlMinutes = Number.parseInt(process.env.CACHE_TTL_MINUTES ?? '20', 10);
   const userAgent = process.env.USER_AGENT ?? DEFAULT_USER_AGENT;
   return {
     port,
