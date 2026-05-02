@@ -46,8 +46,10 @@ const PER_USER_PATTERNS = (username: string) => [
   `watchlist:${username}`,
   `diary:${username}`,
   `lists:${username}`,
+  `list:${username}:*`,
   `rss:${username}`,
   `recommend:${username}:*`,
+  `exclusion:${username}`,
 ];
 
 export async function clearForUser(username: string): Promise<number> {
