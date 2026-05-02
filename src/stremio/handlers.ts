@@ -14,9 +14,14 @@ import {
 } from './manifest';
 import { CatalogResponse, StremioMetaPreview, StremioType } from './types';
 
-const RESOLVE_CONCURRENCY = 6;
+const RESOLVE_CONCURRENCY = 10;
 const ENRICH_CONCURRENCY = 8;
 const CURATED_DISPLAY_LIMIT = 100;
+// Pre-slice the source list before resolving IMDB ids so cold starts on
+// big curated lists (Top 500, etc.) stay within the Vercel function
+// timeout. We pull 1.5x the display limit to leave room for the
+// exclusion filter to drop seen films without dipping below 100.
+const CURATED_RESOLVE_LIMIT = Math.ceil(CURATED_DISPLAY_LIMIT * 1.5);
 
 async function filmsToMetas(
   films: LetterboxdFilm[],
@@ -109,47 +114,60 @@ export async function handleCatalog(
     const list = CURATED_LISTS.find((l) => l.id === listId);
     if (!list) return { metas: [] };
 
-    const [films, excluded] = await Promise.all([
-      fetchListFilms(list.owner, list.slug),
-      buildExclusionSet(username),
-    ]);
+    try {
+      const [filmsAll, excluded] = await Promise.all([
+        fetchListFilms(list.owner, list.slug).catch(() => []),
+        buildExclusionSet(username).catch(() => new Set<string>()),
+      ]);
 
-    const withImdb = await mapPool(films, RESOLVE_CONCURRENCY, async (film) => {
-      try {
-        const ids = await resolveFilmIds(film.slug);
-        if (!ids.imdbId) return null;
-        if (excluded.has(ids.imdbId)) return null;
-        return { film, imdbId: ids.imdbId };
-      } catch {
-        return null;
-      }
-    });
+      // Resolve only the head of the list to keep cold-start cost
+      // bounded; subsequent calls hit the per-film cache.
+      const films = filmsAll.slice(0, CURATED_RESOLVE_LIMIT);
 
-    const filtered = withImdb
-      .filter((x): x is { film: LetterboxdFilm; imdbId: string } => x !== null)
-      .slice(0, CURATED_DISPLAY_LIMIT);
+      const withImdb = await mapPool(films, RESOLVE_CONCURRENCY, async (film) => {
+        try {
+          const ids = await resolveFilmIds(film.slug);
+          if (!ids.imdbId) return null;
+          if (excluded.has(ids.imdbId)) return null;
+          return { film, imdbId: ids.imdbId };
+        } catch {
+          return null;
+        }
+      });
 
-    const enriched = await mapPool(
-      filtered,
-      ENRICH_CONCURRENCY,
-      async ({ film, imdbId }): Promise<StremioMetaPreview | null> => {
-        const classified = await classifyAndEnrich(imdbId);
-        if (!classified || classified.type !== wantedType) return null;
-        const m = classified.meta;
-        return {
-          id: imdbId,
-          type: wantedType,
-          name: film.title || m.name || imdbId,
-          releaseInfo: film.year ? String(film.year) : m.releaseInfo,
-          poster: m.poster,
-          background: m.background,
-          description: m.description,
-          imdbRating: m.imdbRating,
-          genres: m.genres,
-        };
-      },
-    );
-    return { metas: enriched.filter((m): m is StremioMetaPreview => m !== null) };
+      const filtered = withImdb
+        .filter((x): x is { film: LetterboxdFilm; imdbId: string } => x !== null)
+        .slice(0, CURATED_DISPLAY_LIMIT);
+
+      const enriched = await mapPool(
+        filtered,
+        ENRICH_CONCURRENCY,
+        async ({ film, imdbId }): Promise<StremioMetaPreview | null> => {
+          try {
+            const classified = await classifyAndEnrich(imdbId);
+            if (!classified || classified.type !== wantedType) return null;
+            const m = classified.meta;
+            return {
+              id: imdbId,
+              type: wantedType,
+              name: film.title || m.name || imdbId,
+              releaseInfo: film.year ? String(film.year) : m.releaseInfo,
+              poster: m.poster,
+              background: m.background,
+              description: m.description,
+              imdbRating: m.imdbRating,
+              genres: m.genres,
+            };
+          } catch {
+            return null;
+          }
+        },
+      );
+      return { metas: enriched.filter((m): m is StremioMetaPreview => m !== null) };
+    } catch (err) {
+      console.warn(`[handlers] curated catalog ${listId} failed:`, err);
+      return { metas: [] };
+    }
   }
 
   if (id.startsWith(CATALOG_LIST_PREFIX)) {

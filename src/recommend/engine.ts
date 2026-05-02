@@ -44,6 +44,10 @@ const PREFERRED_GENRE_LIMIT = 6;
 // Watchlist counts at half a seed when computing preferred genres
 // (intent vs. positive endorsement).
 const WATCHLIST_GENRE_WEIGHT = 0.5;
+// Cap how many watchlist entries influence the preferred genre set.
+// More than this rarely changes the ranking but adds linear cost
+// (one Letterboxd page fetch + one TMDB details call per entry).
+const WATCHLIST_GENRE_SAMPLE = 25;
 
 export type Recommendation = {
   imdbId: string;
@@ -93,7 +97,8 @@ async function buildPreferredGenres(
     }
   });
 
-  await mapPool(watchlist, DETAILS_FETCH_CONCURRENCY, async (film) => {
+  const watchlistSample = watchlist.slice(0, WATCHLIST_GENRE_SAMPLE);
+  await mapPool(watchlistSample, DETAILS_FETCH_CONCURRENCY, async (film) => {
     try {
       const ids = await resolveFilmIds(film.slug);
       if (!ids.tmdbId) return;
@@ -107,7 +112,7 @@ async function buildPreferredGenres(
     }
   });
 
-  const totalWeight = seeds.length + watchlist.length * WATCHLIST_GENRE_WEIGHT;
+  const totalWeight = seeds.length + watchlistSample.length * WATCHLIST_GENRE_WEIGHT;
   if (totalWeight === 0) return new Set();
   const minCount = Math.max(2, totalWeight * PREFERRED_GENRE_THRESHOLD);
   return new Set(
