@@ -67,7 +67,7 @@ export function buildManifest(username: string, opts: ManifestOpts = {}): Stremi
   }
   for (const list of CURATED_LISTS) {
     if (want.curated.has(list.id)) {
-      catalogs.push(...pair(`${CATALOG_CURATED_PREFIX}${list.id}`, `${list.name} – Unwatched`));
+      catalogs.push(...pair(`${CATALOG_CURATED_PREFIX}${list.id}`, list.name));
     }
   }
 
