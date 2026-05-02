@@ -1,3 +1,4 @@
+import { CURATED_LISTS } from '../curated/lists';
 import { resolveFilmIds } from '../letterboxd/film';
 import {
   fetchDiary,
@@ -9,6 +10,7 @@ import { recommend } from '../recommend/engine';
 import { mapPool } from '../util/pool';
 import { classifyAndEnrich } from './cinemeta';
 import {
+  CATALOG_CURATED_PREFIX,
   CATALOG_DIARY,
   CATALOG_LIST_PREFIX,
   CATALOG_RECOMMENDED,
@@ -18,6 +20,24 @@ import { CatalogResponse, StremioMetaPreview, StremioType } from './types';
 
 const RESOLVE_CONCURRENCY = 6;
 const ENRICH_CONCURRENCY = 8;
+const CURATED_DISPLAY_LIMIT = 100;
+
+async function buildUserExclusionSet(username: string): Promise<Set<string>> {
+  const [watchlist, diary] = await Promise.all([
+    fetchWatchlist(username).catch(() => []),
+    fetchDiary(username).catch(() => []),
+  ]);
+  const seen = new Set<string>();
+  await mapPool([...watchlist, ...diary], RESOLVE_CONCURRENCY, async (film) => {
+    try {
+      const ids = await resolveFilmIds(film.slug);
+      if (ids.imdbId) seen.add(ids.imdbId);
+    } catch {
+      /* ignore */
+    }
+  });
+  return seen;
+}
 
 async function filmsToMetas(
   films: LetterboxdFilm[],
@@ -88,6 +108,53 @@ export async function handleCatalog(
           type: wantedType,
           name: m.name ?? imdbId,
           releaseInfo: m.releaseInfo,
+          poster: m.poster,
+          background: m.background,
+          description: m.description,
+          imdbRating: m.imdbRating,
+        };
+      },
+    );
+    return { metas: enriched.filter((m): m is StremioMetaPreview => m !== null) };
+  }
+
+  if (id.startsWith(CATALOG_CURATED_PREFIX)) {
+    const listId = id.slice(CATALOG_CURATED_PREFIX.length);
+    const list = CURATED_LISTS.find((l) => l.id === listId);
+    if (!list) return { metas: [] };
+
+    const [films, excluded] = await Promise.all([
+      fetchListFilms(list.owner, list.slug),
+      buildUserExclusionSet(username),
+    ]);
+
+    const withImdb = await mapPool(films, RESOLVE_CONCURRENCY, async (film) => {
+      try {
+        const ids = await resolveFilmIds(film.slug);
+        if (!ids.imdbId) return null;
+        if (excluded.has(ids.imdbId)) return null;
+        return { film, imdbId: ids.imdbId };
+      } catch {
+        return null;
+      }
+    });
+
+    const filtered = withImdb
+      .filter((x): x is { film: LetterboxdFilm; imdbId: string } => x !== null)
+      .slice(0, CURATED_DISPLAY_LIMIT);
+
+    const enriched = await mapPool(
+      filtered,
+      ENRICH_CONCURRENCY,
+      async ({ film, imdbId }): Promise<StremioMetaPreview | null> => {
+        const classified = await classifyAndEnrich(imdbId);
+        if (!classified || classified.type !== wantedType) return null;
+        const m = classified.meta;
+        return {
+          id: imdbId,
+          type: wantedType,
+          name: film.title || m.name || imdbId,
+          releaseInfo: film.year ? String(film.year) : m.releaseInfo,
           poster: m.poster,
           background: m.background,
           description: m.description,

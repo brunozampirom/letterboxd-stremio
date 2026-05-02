@@ -1,3 +1,4 @@
+import { CURATED_FLAGS, CURATED_LISTS } from '../curated/lists';
 import { isEnabled as recommendationsEnabled } from '../recommend/engine';
 import { StremioCatalog, StremioManifest, StremioType } from './types';
 
@@ -7,6 +8,7 @@ export const CATALOG_WATCHLIST = 'letterboxd-watchlist';
 export const CATALOG_DIARY = 'letterboxd-diary';
 export const CATALOG_RECOMMENDED = 'letterboxd-recommended';
 export const CATALOG_LIST_PREFIX = 'letterboxd-list-';
+export const CATALOG_CURATED_PREFIX = 'letterboxd-curated-';
 
 const TYPES: StremioType[] = ['movie', 'series'];
 
@@ -14,16 +16,32 @@ export type ManifestOpts = {
   watchlist?: boolean;
   diary?: boolean;
   recommended?: boolean;
+  curated?: Set<string>; // set of CuratedList.id values to include
 };
 
-export const FLAG_RE = /^[wdr]{1,3}$/;
+export const FLAG_RE = new RegExp(`^[wdr${CURATED_FLAGS}]{1,${3 + CURATED_FLAGS.length}}$`);
+
+const FLAG_TO_CURATED_ID = new Map(CURATED_LISTS.map((l) => [l.flag, l.id]));
 
 export function parseFlags(flags?: string): Required<ManifestOpts> {
-  if (!flags) return { watchlist: true, diary: true, recommended: true };
+  if (!flags) {
+    return {
+      watchlist: true,
+      diary: true,
+      recommended: true,
+      curated: new Set(CURATED_LISTS.map((l) => l.id)),
+    };
+  }
+  const curated = new Set<string>();
+  for (const ch of flags) {
+    const id = FLAG_TO_CURATED_ID.get(ch);
+    if (id) curated.add(id);
+  }
   return {
     watchlist: flags.includes('w'),
     diary: flags.includes('d'),
     recommended: flags.includes('r'),
+    curated,
   };
 }
 
@@ -36,6 +54,7 @@ export function buildManifest(username: string, opts: ManifestOpts = {}): Stremi
     watchlist: opts.watchlist ?? true,
     diary: opts.diary ?? true,
     recommended: opts.recommended ?? true,
+    curated: opts.curated ?? new Set(CURATED_LISTS.map((l) => l.id)),
   };
 
   const catalogs: StremioCatalog[] = [];
@@ -47,6 +66,11 @@ export function buildManifest(username: string, opts: ManifestOpts = {}): Stremi
   }
   if (want.recommended && recommendationsEnabled()) {
     catalogs.push(...pair(CATALOG_RECOMMENDED, `Letterboxd Recommended – ${username}`));
+  }
+  for (const list of CURATED_LISTS) {
+    if (want.curated.has(list.id)) {
+      catalogs.push(...pair(`${CATALOG_CURATED_PREFIX}${list.id}`, `${list.name} – Unwatched`));
+    }
   }
 
   return {

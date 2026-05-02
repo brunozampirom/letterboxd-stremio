@@ -202,6 +202,17 @@
           </label>
         </fieldset>
 
+        <fieldset id="curated">
+          <legend>Curated picks</legend>
+          <label class="catalog-option">
+            <span class="row">
+              <input type="checkbox" data-flag="t" checked />
+              <span class="meta">Letterboxd's Top 500 – Unwatched</span>
+            </span>
+            <span class="desc">Highest-rated narrative features on Letterboxd, filtered by what you haven't seen yet.</span>
+          </label>
+        </fieldset>
+
         <div class="actions">
           <button type="submit" class="primary" id="install">Install in Stremio</button>
           <button type="button" class="secondary" id="copy">Copy URL</button>
@@ -252,7 +263,8 @@
         for (const cb of form.querySelectorAll('fieldset input[type="checkbox"]')) {
           if (cb.checked && !cb.disabled) flags.push(cb.dataset.flag);
         }
-        return flags.join('');
+        // Stremio tolerates flag order, but keep it stable for cleaner URLs.
+        return flags.sort().join('');
       }
 
       function pathSegment() {
