@@ -23,13 +23,19 @@ export const FLAG_RE = new RegExp(`^[wdr${CURATED_FLAGS}]{1,${3 + CURATED_FLAGS.
 
 const FLAG_TO_CURATED_ID = new Map(CURATED_LISTS.map((l) => [l.flag, l.id]));
 
+// Default curated picks when the URL has no flag segment. We pick a single
+// flagship catalog (Top 500) so an unconfigured install matches the
+// /configure page's defaults instead of dumping every curated list into
+// Discover.
+const DEFAULT_CURATED_IDS = new Set(['top500']);
+
 export function parseFlags(flags?: string): Required<ManifestOpts> {
   if (!flags) {
     return {
       watchlist: true,
       diary: true,
       recommended: true,
-      curated: new Set(CURATED_LISTS.map((l) => l.id)),
+      curated: new Set(DEFAULT_CURATED_IDS),
     };
   }
   const curated = new Set<string>();
@@ -54,7 +60,7 @@ export function buildManifest(username: string, opts: ManifestOpts = {}): Stremi
     watchlist: opts.watchlist ?? true,
     diary: opts.diary ?? true,
     recommended: opts.recommended ?? true,
-    curated: opts.curated ?? new Set(CURATED_LISTS.map((l) => l.id)),
+    curated: opts.curated ?? new Set(DEFAULT_CURATED_IDS),
   };
 
   const catalogs: StremioCatalog[] = [];
