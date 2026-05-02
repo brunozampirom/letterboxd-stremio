@@ -37,6 +37,16 @@ function countPosters(html: string): number {
   return matches ? matches.length : 0;
 }
 
+function countFilmSlugs(html: string): number {
+  const matches = html.match(/data-item-slug="[^"]+"/g);
+  return matches ? matches.length : 0;
+}
+
+function sampleFilmSlugs(html: string, n = 5): string[] {
+  const matches = html.match(/data-item-slug="([^"]+)"/g) ?? [];
+  return matches.slice(0, n).map((m) => m.replace(/data-item-slug="([^"]+)"/, '$1'));
+}
+
 function extractLists(html: string, owner: string): Array<{ slug: string; title: string }> {
   const $ = cheerio.load(html);
   const seen = new Set<string>();
@@ -89,6 +99,8 @@ export async function handleProbe(req: IncomingMessage, res: ServerResponse, que
     status,
     bytes: html.length,
     posterCount: countPosters(html),
+    filmSlugCount: countFilmSlugs(html),
+    sampleSlugs: sampleFilmSlugs(html),
     isCloudflareChallenge: isCloudflareChallenge(html),
     sample: html.slice(0, 400),
     error: errorMessage,
