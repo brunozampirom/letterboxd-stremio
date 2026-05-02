@@ -45,6 +45,47 @@
         outline: none;
         border-color: var(--accent);
       }
+      fieldset {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        margin: 18px 0 0;
+        padding: 12px 14px;
+      }
+      legend {
+        font-size: 12px;
+        color: var(--muted);
+        padding: 0 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .catalog-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 8px 0;
+        cursor: pointer;
+      }
+      .catalog-option input[type="checkbox"] {
+        margin-top: 3px;
+        accent-color: var(--accent);
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+      .catalog-option .meta {
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--fg);
+      }
+      .catalog-option .desc {
+        margin-top: 2px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .catalog-option.disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
       .actions {
         display: flex;
         gap: 8px;
@@ -117,11 +158,37 @@
   <body>
     <main>
       <h1>Letterboxd → Stremio</h1>
-      <p class="lede">Install your Letterboxd watchlist, diary, and lists as Stremio catalogs.</p>
+      <p class="lede">Install your Letterboxd watchlist, diary, and recommendations as Stremio catalogs.</p>
 
       <form id="form" autocomplete="off">
         <label for="username">Letterboxd username</label>
         <input id="username" name="username" type="text" placeholder="e.g. davidehrlich" required pattern="[A-Za-z0-9_]{1,32}" />
+
+        <fieldset id="catalogs">
+          <legend>Catalogs</legend>
+          <label class="catalog-option">
+            <input type="checkbox" data-flag="w" checked />
+            <span>
+              <span class="meta">Watchlist</span>
+              <span class="desc">Films you've added to your Letterboxd watchlist.</span>
+            </span>
+          </label>
+          <label class="catalog-option">
+            <input type="checkbox" data-flag="d" checked />
+            <span>
+              <span class="meta">Diary</span>
+              <span class="desc">Films you've logged on Letterboxd.</span>
+            </span>
+          </label>
+          <label class="catalog-option" id="recOption">
+            <input type="checkbox" data-flag="r" checked />
+            <span>
+              <span class="meta">Recommended</span>
+              <span class="desc">Films similar to those you rated 4★ or higher.</span>
+            </span>
+          </label>
+        </fieldset>
+
         <div class="actions">
           <button type="submit" class="primary" id="install">Install in Stremio</button>
           <button type="button" class="secondary" id="copy">Copy URL</button>
@@ -143,22 +210,61 @@
       const hint = document.getElementById('hint');
       const copyBtn = document.getElementById('copy');
       const installBtn = document.getElementById('install');
+      const recOption = document.getElementById('recOption');
+      const recCheckbox = recOption.querySelector('input');
 
       const isLocal =
         location.hostname === 'localhost' ||
         location.hostname === '127.0.0.1' ||
         location.protocol !== 'https:';
 
-      if (isLocal) {
-        installBtn.textContent = 'Copy URL & open Stremio';
+      if (isLocal) installBtn.textContent = 'Copy URL & open Stremio';
+
+      // Disable Recommendations checkbox if the server has no TMDB token.
+      fetch('/health').then(r => r.json()).then(h => {
+        if (!h?.recommendations?.enabled) {
+          recCheckbox.checked = false;
+          recCheckbox.disabled = true;
+          recOption.classList.add('disabled');
+          recOption.title = 'TMDB_READ_TOKEN not configured on this server';
+        }
+      }).catch(() => {});
+
+      function selectedFlags() {
+        const flags = [];
+        for (const cb of form.querySelectorAll('fieldset input[type="checkbox"]')) {
+          if (cb.checked && !cb.disabled) flags.push(cb.dataset.flag);
+        }
+        return flags.join('');
+      }
+
+      function pathSegment() {
+        const flags = selectedFlags();
+        // Only include the flag segment when the user has unchecked something
+        // (omit it when "all available" are checked → backwards-compatible URL).
+        const enabledChecks = [...form.querySelectorAll('fieldset input[type="checkbox"]:not(:disabled)')];
+        const allChecked = enabledChecks.every(cb => cb.checked);
+        if (allChecked) return '';
+        return `/${flags}`;
       }
 
       function manifestUrl(username) {
-        return `${location.origin}/${username}/manifest.json`;
+        return `${location.origin}/${username}${pathSegment()}/manifest.json`;
       }
 
       function stremioUrl(username) {
         return manifestUrl(username).replace(/^https?:\/\//, 'stremio://');
+      }
+
+      function validate(username) {
+        if (!username) return false;
+        const someSelected = [...form.querySelectorAll('fieldset input[type="checkbox"]')]
+          .some(cb => cb.checked && !cb.disabled);
+        if (!someSelected) {
+          alert('Select at least one catalog.');
+          return false;
+        }
+        return true;
       }
 
       function showUrl(username) {
@@ -183,10 +289,16 @@
         }
       }
 
+      // Update the URL preview live as the user toggles checkboxes (only after they've typed a username).
+      form.addEventListener('change', () => {
+        const u = input.value.trim().toLowerCase();
+        if (u && urlBox.classList.contains('visible')) showUrl(u);
+      });
+
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const u = input.value.trim().toLowerCase();
-        if (!u) return;
+        if (!validate(u)) return;
         showUrl(u);
         if (isLocal) {
           await copyToClipboard(manifestUrl(u));
@@ -198,7 +310,7 @@
 
       copyBtn.addEventListener('click', async () => {
         const u = input.value.trim().toLowerCase();
-        if (!u) return;
+        if (!validate(u)) return;
         showUrl(u);
         const ok = await copyToClipboard(manifestUrl(u));
         if (ok) {

@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { info as cacheInfo } from '../cache';
 import { isEnabled as recommendationsEnabled } from '../recommend/engine';
 import { handleCatalog } from '../stremio/handlers';
-import { buildManifest } from '../stremio/manifest';
+import { buildManifest, FLAG_RE, parseFlags } from '../stremio/manifest';
 import { handleProbe } from './admin';
 import { Bucket, check, info as ratelimitInfo, LimitResult } from './ratelimit';
 
@@ -141,13 +141,18 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
-  const rest = segments.slice(1);
+  let flagSegment: string | undefined;
+  let rest = segments.slice(1);
+  if (rest.length > 0 && FLAG_RE.test(rest[0])) {
+    flagSegment = rest[0];
+    rest = rest.slice(1);
+  }
 
   try {
     if (rest.length === 1 && rest[0] === 'manifest.json') {
       const rl = await gate(req, res, 'default');
       if (rl && !rl.success) return;
-      sendJson(res, 200, buildManifest(username), rateLimitHeaders(rl));
+      sendJson(res, 200, buildManifest(username, parseFlags(flagSegment)), rateLimitHeaders(rl));
       return;
     }
 
