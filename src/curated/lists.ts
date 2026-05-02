@@ -92,6 +92,22 @@ export const CURATED_LISTS: ReadonlyArray<CuratedList> = [
     name: 'The 2010s Top 250',
     description: 'Highest-rated narrative features released between 2010 and 2019.',
   },
+  {
+    id: 'miniseries250',
+    flag: 'm',
+    owner: 'official',
+    slug: 'top-250-miniseries',
+    name: 'Top 250 Miniseries',
+    description: 'Highest-rated miniseries on Letterboxd.',
+  },
+  {
+    id: 'japanese100',
+    flag: 'j',
+    owner: 'official',
+    slug: 'top-100-japanese-films',
+    name: 'Top 100 Japanese Films',
+    description: 'Highest-rated Japanese feature films.',
+  },
 ];
 
 export const CURATED_FLAGS = CURATED_LISTS.map((l) => l.flag).join('');
