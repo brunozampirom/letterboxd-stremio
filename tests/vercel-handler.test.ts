@@ -5,7 +5,8 @@ import vercelHandler from '../api/[...path]';
 
 // Exercises the real Vercel entrypoint, not just the helper: production
 // 404'd every addon route because the function receives the rewritten
-// /api/... path and the router read "api" as the Letterboxd username.
+// path, doubled, and the router read "api" as the Letterboxd username.
+// The paths below are what production actually delivers.
 let server: Server;
 let base: string;
 
@@ -26,7 +27,7 @@ afterAll(async () => {
 
 describe('vercel entrypoint', () => {
   it('serves the manifest for the path the rewrite produces', async () => {
-    const res = await fetch(`${base}/api/brunozampirom/rtw/manifest.json`);
+    const res = await fetch(`${base}/api/api/brunozampirom/rtw/manifest.json`);
     expect(res.status).toBe(200);
 
     const body = (await res.json()) as { id: string; name: string };
@@ -35,13 +36,13 @@ describe('vercel entrypoint', () => {
   });
 
   it('lets the CDN cache the manifest', async () => {
-    const res = await fetch(`${base}/api/brunozampirom/manifest.json`);
+    const res = await fetch(`${base}/api/api/brunozampirom/manifest.json`);
     // Vercel's CDN ignores a bare max-age on a function response.
     expect(res.headers.get('cache-control')).toContain('s-maxage=');
   });
 
   it('serves health on the rewritten path', async () => {
-    const res = await fetch(`${base}/api/health`);
+    const res = await fetch(`${base}/api/api/health`);
     expect(res.status).toBe(200);
     expect((await res.json()) as { ok: boolean }).toMatchObject({ ok: true });
   });
@@ -50,13 +51,13 @@ describe('vercel entrypoint', () => {
     // public/ is on disk here, so this is the read path. On Vercel the
     // directory isn't bundled into the function and the handler falls
     // back to a 302 at /configure.html, which the CDN serves.
-    const res = await fetch(`${base}/api/brunozampirom/configure`, { redirect: 'manual' });
+    const res = await fetch(`${base}/api/api/brunozampirom/configure`, { redirect: 'manual' });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
   });
 
   it('still rejects a path with no valid username', async () => {
-    const res = await fetch(`${base}/api/manifest.json`);
+    const res = await fetch(`${base}/api/api/manifest.json`);
     expect(res.status).toBe(404);
   });
 });

@@ -26,9 +26,15 @@ describe('stripApiPrefix', () => {
     expect(stripApiPrefix('/')).toBe('/');
   });
 
-  it('strips only one segment, so a user named api still resolves', () => {
-    // The rewrite turns /api/manifest.json into /api/api/manifest.json.
-    expect(stripApiPrefix('/api/api/manifest.json')).toBe('/api/manifest.json');
+  it('peels however many segments the rewrite prepended', () => {
+    // Production hands the function a doubled prefix, so a fixed-depth
+    // strip left one behind and every route 404'd.
+    expect(stripApiPrefix('/api/api/brunozampirom/rtw/manifest.json')).toBe(
+      '/brunozampirom/rtw/manifest.json',
+    );
+    expect(stripApiPrefix('/api/api/health')).toBe('/health');
+    expect(stripApiPrefix('/api/api/')).toBe('/');
+    expect(stripApiPrefix('/api/api')).toBe('/');
   });
 
   it('does not strip a path that merely starts with the letters api', () => {
