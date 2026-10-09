@@ -104,12 +104,27 @@ src/
 │   ├── transform.ts     # Letterboxd film → Stremio meta
 │   └── types.ts
 ├── server/router.ts     # HTTP routing (manifest, catalog, configure)
-└── server.ts            # local server entry
-api/
-└── [...path].ts         # Vercel serverless adapter
+└── server.ts            # server entry, everywhere
 public/
 └── configure.html       # username form
 ```
+
+### Entrypoint
+
+`src/server.ts` is the entrypoint in every environment, Vercel included.
+Vercel detects the Node server from `package.json` `main` and serves the
+whole app as one function, listening on `PORT`.
+
+There is deliberately no adapter under `api/`, and `vercel.json` carries
+no catch-all rewrite. An earlier `/(.*)` -> `/api/$1` rewrite existed to
+push addon paths into an `api/` function; once Vercel started serving the
+root server instead, that rewrite only prepended a segment the router
+read as the username, and every route 404'd in production. If you add
+one back, the router will treat its first segment as a Letterboxd user.
+
+`public/` is served by the CDN and is not in the function bundle, so
+`fs.readFile` on it fails there. `sendConfigurePage` falls back to a
+redirect to the static asset.
 
 The HTTP protocol implemented matches the [Stremio addon spec](https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/protocol.md): `GET /<username>/manifest.json` and `GET /<username>/catalog/movie/<catalogId>.json`.
 
