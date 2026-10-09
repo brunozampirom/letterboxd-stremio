@@ -103,7 +103,11 @@ function sendConfigurePage(res: ServerResponse) {
   const file = path.join(PUBLIC_DIR, 'configure.html');
   fs.readFile(file, (err, data) => {
     if (err) {
-      sendError(res, 'configure.html missing');
+      // On Vercel public/ is served by the CDN and isn't bundled into
+      // the function, so the file genuinely isn't on disk here. Hand
+      // the browser the static asset instead of reporting a 500.
+      res.writeHead(302, { Location: '/configure.html', ...CORS_HEADERS });
+      res.end();
       return;
     }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...CORS_HEADERS });
