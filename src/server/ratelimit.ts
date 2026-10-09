@@ -16,6 +16,14 @@ const DEFAULT_LIMIT = Number.parseInt(process.env.RATELIMIT_DEFAULT_PER_MIN ?? '
 
 let limiters: Record<Bucket, Ratelimit> | null | undefined;
 
+// Upstash throws on every command once a database is unreachable or
+// over its monthly quota. Failing closed would take the whole addon
+// down over a billing problem, so a failed check allows the request
+// and parks the limiter for a while instead of retrying a dead
+// backend on every single request.
+const FAILURE_COOLDOWN_MS = 60 * 1000;
+let cooldownUntil = 0;
+
 function buildLimiters(): Record<Bucket, Ratelimit> | null {
   const redis = getRedis();
   if (!redis) return null;
@@ -52,14 +60,22 @@ export function clientIp(req: IncomingMessage): string {
 export async function check(req: IncomingMessage, bucket: Bucket): Promise<LimitResult | null> {
   if (limiters === undefined) limiters = buildLimiters();
   if (!limiters) return null;
+  if (Date.now() < cooldownUntil) return null;
+
   const ip = clientIp(req);
-  const result = await limiters[bucket].limit(ip);
-  return {
-    success: result.success,
-    limit: result.limit,
-    remaining: result.remaining,
-    reset: result.reset,
-  };
+  try {
+    const result = await limiters[bucket].limit(ip);
+    return {
+      success: result.success,
+      limit: result.limit,
+      remaining: result.remaining,
+      reset: result.reset,
+    };
+  } catch (err) {
+    cooldownUntil = Date.now() + FAILURE_COOLDOWN_MS;
+    console.warn('[ratelimit] backend unavailable, allowing request', err);
+    return null;
+  }
 }
 
 export function info(): { enabled: boolean; vendor?: 'upstash'; perMinute?: { catalog: number; default: number } } {

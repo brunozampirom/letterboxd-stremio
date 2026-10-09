@@ -1,11 +1,11 @@
 import { CURATED_LISTS } from '../curated/lists';
 import { buildExclusionSet } from '../letterboxd/exclusion';
-import { resolveFilmIds } from '../letterboxd/film';
+import { resolveFilmIds, warmFilmIds } from '../letterboxd/film';
 import { fetchListFilms, fetchWatchlist } from '../letterboxd/scraper';
 import { LetterboxdFilm } from '../letterboxd/types';
 import { recommend } from '../recommend/engine';
 import { mapPool } from '../util/pool';
-import { classifyAndEnrich } from './cinemeta';
+import { classifyAndEnrich, warmCinemeta } from './cinemeta';
 import {
   CATALOG_CURATED_PREFIX,
   CATALOG_LIST_PREFIX,
@@ -27,6 +27,7 @@ async function filmsToMetas(
   films: LetterboxdFilm[],
   wantedType: StremioType,
 ): Promise<StremioMetaPreview[]> {
+  await warmFilmIds(films.map((f) => f.slug));
   const withImdb = await mapPool(films, RESOLVE_CONCURRENCY, async (film) => {
     try {
       const ids = await resolveFilmIds(film.slug);
@@ -37,8 +38,13 @@ async function filmsToMetas(
     }
   });
 
+  const resolved = withImdb.filter(
+    (x): x is { film: LetterboxdFilm; imdbId: string } => x !== null,
+  );
+  await warmCinemeta(resolved.map((x) => x.imdbId));
+
   const enriched = await mapPool(
-    withImdb.filter((x): x is { film: LetterboxdFilm; imdbId: string } => x !== null),
+    resolved,
     ENRICH_CONCURRENCY,
     async ({ film, imdbId }): Promise<StremioMetaPreview | null> => {
       const classified = await classifyAndEnrich(imdbId);
@@ -82,6 +88,7 @@ export async function handleCatalog(
       console.warn('[handlers] recommend failed:', err);
       return { metas: [] };
     }
+    await warmCinemeta(recs.map((r) => r.imdbId));
     const enriched = await mapPool(
       recs,
       ENRICH_CONCURRENCY,
@@ -124,6 +131,7 @@ export async function handleCatalog(
       // bounded; subsequent calls hit the per-film cache.
       const films = filmsAll.slice(0, CURATED_RESOLVE_LIMIT);
 
+      await warmFilmIds(films.map((f) => f.slug));
       const withImdb = await mapPool(films, RESOLVE_CONCURRENCY, async (film) => {
         try {
           const ids = await resolveFilmIds(film.slug);
@@ -139,6 +147,7 @@ export async function handleCatalog(
         .filter((x): x is { film: LetterboxdFilm; imdbId: string } => x !== null)
         .slice(0, CURATED_DISPLAY_LIMIT);
 
+      await warmCinemeta(filtered.map((x) => x.imdbId));
       const enriched = await mapPool(
         filtered,
         ENRICH_CONCURRENCY,

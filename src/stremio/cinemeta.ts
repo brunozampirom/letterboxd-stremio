@@ -1,8 +1,10 @@
-import { getOrFetch } from '../cache';
+import { getOrFetch, warm } from '../cache';
 import { StremioType } from './types';
 
 const CINEMETA_BASE = 'https://v3-cinemeta.strem.io';
 const CINEMETA_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+const key = (imdbId: string) => `cinemeta:${imdbId}`;
 
 export type CinemetaMeta = {
   name?: string;
@@ -30,8 +32,13 @@ async function fetchOne(imdbId: string, type: StremioType): Promise<CinemetaMeta
   }
 }
 
+// See warmFilmIds: one command for the whole set instead of one per id.
+export async function warmCinemeta(imdbIds: readonly string[]): Promise<void> {
+  await warm(imdbIds.map(key), CINEMETA_TTL_MS);
+}
+
 export async function classifyAndEnrich(imdbId: string): Promise<ClassifiedMeta | null> {
-  return getOrFetch(`cinemeta:${imdbId}`, CINEMETA_TTL_MS, async () => {
+  return getOrFetch(key(imdbId), CINEMETA_TTL_MS, async () => {
     const [movie, series] = await Promise.all([
       fetchOne(imdbId, 'movie'),
       fetchOne(imdbId, 'series'),

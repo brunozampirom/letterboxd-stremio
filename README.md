@@ -23,7 +23,7 @@ Enter your Letterboxd username and click **Install in Stremio**. That's it. The 
 - **Watchlist** as a Stremio catalog (Movies and Series, separated automatically)
 - **Recommendations** — films similar to the ones you liked or rated 4★ or higher; powered by TMDB and your Letterboxd RSS feed (requires a free TMDB token)
 - **Curated picks** — opt-in catalogs from Letterboxd's official lists (Top 500, Top 250 Horror, Animated, Documentaries, etc.), each filtered to films you haven't watched yet
-- **Caching** — Upstash Redis when configured, in-memory fallback otherwise
+- **Caching** — CDN, process memory, and Upstash Redis when configured (memory alone otherwise)
 - **Per-IP rate limiting** when Upstash Redis is available
 - **Multi-tenant** — one deployment serves any number of users via URL-based config
 - **Self-hostable** — Docker, plain Node, or Vercel
@@ -89,7 +89,10 @@ The addon **never stores credentials** — it only reads public profile data. Th
 
 ```
 src/
-├── cache/memory.ts      # in-memory TTL cache
+├── cache/
+│   ├── index.ts         # cache facade: memory L1 over Redis, batching
+│   ├── memory.ts        # bounded in-memory TTL cache
+│   └── redis.ts         # Upstash client, MGET reads, pipelined writes
 ├── letterboxd/
 │   ├── http.ts          # fetch wrapper with User-Agent
 │   ├── scraper.ts       # watchlist / list parsing (cheerio)
@@ -124,6 +127,26 @@ yarn test        # run vitest
 ### How film IDs are resolved
 
 Letterboxd film pages link to IMDB and TMDB. We fetch each film page once, extract `tt…` and the TMDB ID via regex, and cache the mapping for 7 days. Stremio is then asked to display the film by IMDB ID, and Cinemeta provides poster/synopsis/etc.
+
+### Caching layers
+
+Three tiers, in order:
+
+1. **Vercel's CDN.** Catalog and manifest responses carry `s-maxage`, so a
+   repeated Stremio poll never reaches the function. `stale-while-revalidate`
+   serves the previous response instantly while the refresh runs behind it.
+2. **Process-local memory (L1).** Bounded, and capped at a 1 hour TTL when
+   Redis is configured, so a warm instance answers without touching Upstash.
+3. **Upstash Redis.** Shared across instances and deploys.
+
+Upstash bills per *command*, and the catalogs are built from per-film keys
+(`filmIds:<slug>`, `cinemeta:<imdbId>`, `tmdb:details:<id>`). Resolving them
+one at a time is what burns a monthly quota: a single curated catalog render
+is a few hundred keys. So every fan-out is preceded by `warm()`, which pulls
+the whole key set into the L1 with **one** `MGET`, and writes are buffered and
+flushed as a single pipeline. If you add a new per-item cache namespace, give
+it a `warm*` helper and call it before the loop, otherwise you reintroduce the
+per-key cost.
 
 ### Scraping etiquette
 

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
-import { info as cacheInfo } from '../cache';
+import { info as cacheInfo, flushWrites } from '../cache';
 import { isEnabled as recommendationsEnabled } from '../recommend/engine';
 import { handleCatalog } from '../stremio/handlers';
 import { buildManifest, FLAG_RE, parseFlags } from '../stremio/manifest';
@@ -11,6 +11,20 @@ import { Bucket, check, info as ratelimitInfo, LimitResult } from './ratelimit';
 const VERSION = '0.1.0';
 const USERNAME_RE = /^[a-z0-9_]{1,32}$/i;
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
+
+// Vercel's CDN only caches a Function response when Cache-Control
+// carries s-maxage; a bare max-age goes to the browser and the CDN
+// passes every request through to the origin. Without these the addon
+// re-renders (and re-reads the cache backend) on every Stremio poll.
+// stale-while-revalidate keeps responses instant past the window while
+// the refresh happens in the background.
+//
+// The manifest is a pure function of the URL, so it can sit at the
+// edge for an hour. Catalogs are held just under the Letterboxd scrape
+// TTL (20 min by default) so the CDN never serves content older than
+// the data layer behind it.
+const CACHE_MANIFEST = 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400';
+const CACHE_CATALOG = 'public, max-age=300, s-maxage=900, stale-while-revalidate=86400';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -27,10 +41,16 @@ function rateLimitHeaders(result: LimitResult | null): Record<string, string> {
   };
 }
 
-function sendJson(res: ServerResponse, status: number, body: unknown, extra: Record<string, string> = {}) {
+function sendJson(
+  res: ServerResponse,
+  status: number,
+  body: unknown,
+  cacheControl: string,
+  extra: Record<string, string> = {},
+) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'public, max-age=300',
+    'Cache-Control': cacheControl,
     ...CORS_HEADERS,
     ...extra,
   });
@@ -91,16 +111,30 @@ function sendConfigurePage(res: ServerResponse) {
   });
 }
 
-async function gate(req: IncomingMessage, res: ServerResponse, bucket: Bucket): Promise<LimitResult | null> {
+// `limited` is what the caller must branch on. Returning a bare
+// LimitResult can't express it: a null also means "limiter disabled",
+// so a rejected request used to fall through to the handler and then
+// write to an already-closed response.
+type Gate = { limited: true } | { limited: false; result: LimitResult | null };
+
+async function gate(req: IncomingMessage, res: ServerResponse, bucket: Bucket): Promise<Gate> {
   const result = await check(req, bucket);
   if (result && !result.success) {
     sendRateLimited(res, result);
-    return null;
+    return { limited: true };
   }
-  return result;
+  return { limited: false, result };
 }
 
 export async function handleRequest(req: IncomingMessage, res: ServerResponse) {
+  try {
+    await dispatch(req, res);
+  } finally {
+    await flushWrites();
+  }
+}
+
+async function dispatch(req: IncomingMessage, res: ServerResponse) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, CORS_HEADERS);
     res.end();
@@ -155,9 +189,10 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse) {
 
   try {
     if (rest.length === 1 && rest[0] === 'manifest.json') {
-      const rl = await gate(req, res, 'default');
-      if (rl && !rl.success) return;
-      sendJson(res, 200, buildManifest(username, parseFlags(flagSegment)), rateLimitHeaders(rl));
+      // No rate limit gate: buildManifest is pure computation over the
+      // URL and touches no backend, so gating it only spent a cache
+      // command per poll.
+      sendJson(res, 200, buildManifest(username, parseFlags(flagSegment)), CACHE_MANIFEST);
       return;
     }
 
@@ -174,17 +209,19 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         return;
       }
       const rl = await gate(req, res, 'catalog');
-      if (rl && !rl.success) return;
+      if (rl.limited) return;
       const idSegments = rest.slice(2, -1).concat(last.replace(/\.json$/, ''));
       const catalogId = idSegments[0];
       const result = await handleCatalog(username, type, catalogId);
-      sendJson(res, 200, result, rateLimitHeaders(rl));
+      sendJson(res, 200, result, CACHE_CATALOG, rateLimitHeaders(rl.result));
       return;
     }
 
     sendNotFound(res);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Internal error';
-    sendError(res, message, 500);
+    // Never echo the backend's error text back to Stremio. An Upstash
+    // quota message used to come back verbatim as the response body.
+    console.error('[router] request failed', err);
+    sendError(res, 'Internal error', 500);
   }
 }

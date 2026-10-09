@@ -1,8 +1,12 @@
-import { getOrFetch } from '../cache';
+import { getOrFetch, warm } from '../cache';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const SIMILAR_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DETAILS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+const similarKey = (tmdbId: string) => `tmdb:similar:v3:${tmdbId}`;
+const recsKey = (tmdbId: string) => `tmdb:recs:v3:${tmdbId}`;
+const detailsKey = (tmdbId: string) => `tmdb:details:${tmdbId}`;
 
 export type TmdbSimilarResult = {
   tmdbId: string;
@@ -97,13 +101,13 @@ async function fetchListPages(path: string, pages: number): Promise<TmdbSimilarR
 // carry it and the engine now needs it to reserve slots for recent
 // films. Forces a clean re-fetch.
 export async function fetchSimilar(tmdbId: string): Promise<TmdbSimilarResult[]> {
-  return getOrFetch(`tmdb:similar:v3:${tmdbId}`, SIMILAR_TTL_MS, () =>
+  return getOrFetch(similarKey(tmdbId), SIMILAR_TTL_MS, () =>
     fetchListPages(`/movie/${tmdbId}/similar`, 2),
   );
 }
 
 export async function fetchRecommendations(tmdbId: string): Promise<TmdbSimilarResult[]> {
-  return getOrFetch(`tmdb:recs:v3:${tmdbId}`, SIMILAR_TTL_MS, () =>
+  return getOrFetch(recsKey(tmdbId), SIMILAR_TTL_MS, () =>
     fetchListPages(`/movie/${tmdbId}/recommendations`, 2),
   );
 }
@@ -140,7 +144,7 @@ type TmdbDetailsResponse = {
 };
 
 export async function fetchMovieDetails(tmdbId: string): Promise<TmdbMovieDetails | null> {
-  return getOrFetch(`tmdb:details:${tmdbId}`, DETAILS_TTL_MS, async () => {
+  return getOrFetch(detailsKey(tmdbId), DETAILS_TTL_MS, async () => {
     const data = await tmdbGet<TmdbDetailsResponse>(
       `/movie/${tmdbId}?append_to_response=external_ids&language=en-US`,
     );
@@ -153,6 +157,16 @@ export async function fetchMovieDetails(tmdbId: string): Promise<TmdbMovieDetail
       genreIds: (data.genres ?? []).map((g) => g.id),
     };
   });
+}
+
+// Both expansion sources for a seed share one TTL, so they warm in a
+// single command. See warmFilmIds for why this matters.
+export async function warmSeedExpansions(tmdbIds: readonly string[]): Promise<void> {
+  await warm([...tmdbIds.map(similarKey), ...tmdbIds.map(recsKey)], SIMILAR_TTL_MS);
+}
+
+export async function warmMovieDetails(tmdbIds: readonly string[]): Promise<void> {
+  await warm(tmdbIds.map(detailsKey), DETAILS_TTL_MS);
 }
 
 export async function resolveImdbId(tmdbId: string): Promise<string | null> {

@@ -1,7 +1,7 @@
 import { cacheIfNonEmpty, getOrFetch } from '../cache';
 import { mapPool } from '../util/pool';
-import { resolveImdbId as tmdbResolveImdbId } from '../tmdb/client';
-import { resolveFilmIds } from './film';
+import { resolveImdbId as tmdbResolveImdbId, warmMovieDetails } from '../tmdb/client';
+import { resolveFilmIds, warmFilmIds } from './film';
 import { fetchRssEntries } from './rss';
 import { fetchDiary, fetchWatchlist } from './scraper';
 
@@ -25,7 +25,9 @@ async function buildExclusionList(username: string): Promise<string[]> {
 
       const seen = new Set<string>();
 
-      await mapPool([...watchlist, ...diary], RESOLVE_CONCURRENCY, async (film) => {
+      const films = [...watchlist, ...diary];
+      await warmFilmIds(films.map((f) => f.slug));
+      await mapPool(films, RESOLVE_CONCURRENCY, async (film) => {
         try {
           const ids = await resolveFilmIds(film.slug);
           if (ids.imdbId) seen.add(ids.imdbId);
@@ -34,6 +36,7 @@ async function buildExclusionList(username: string): Promise<string[]> {
         }
       });
 
+      await warmMovieDetails(rss.map((e) => e.tmdbId));
       await mapPool(rss, RESOLVE_CONCURRENCY, async (entry) => {
         try {
           const imdbId = await tmdbResolveImdbId(entry.tmdbId);

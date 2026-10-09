@@ -1,6 +1,6 @@
 import { cacheIfNonEmpty, getOrFetch } from '../cache';
 import { buildExclusionSet } from '../letterboxd/exclusion';
-import { resolveFilmIds } from '../letterboxd/film';
+import { resolveFilmIds, warmFilmIds } from '../letterboxd/film';
 import { fetchSeedFilms, RssEntry } from '../letterboxd/rss';
 import { fetchWatchlist } from '../letterboxd/scraper';
 import { LetterboxdFilm } from '../letterboxd/types';
@@ -11,6 +11,8 @@ import {
   fetchSimilar,
   isConfigured,
   TmdbSimilarResult,
+  warmMovieDetails,
+  warmSeedExpansions,
 } from '../tmdb/client';
 import { mapPool } from '../util/pool';
 
@@ -126,6 +128,7 @@ async function buildPreferredGenres(
 ): Promise<Set<number>> {
   const freq = new Map<number, number>();
 
+  await warmMovieDetails(seeds.map((e) => e.tmdbId));
   await mapPool(seeds, DETAILS_FETCH_CONCURRENCY, async (entry) => {
     try {
       const details = await fetchMovieDetails(entry.tmdbId);
@@ -139,11 +142,21 @@ async function buildPreferredGenres(
   });
 
   const watchlistSample = watchlist.slice(0, WATCHLIST_GENRE_SAMPLE);
-  await mapPool(watchlistSample, DETAILS_FETCH_CONCURRENCY, async (film) => {
+  await warmFilmIds(watchlistSample.map((f) => f.slug));
+  const watchlistTmdbIds = (
+    await mapPool(watchlistSample, DETAILS_FETCH_CONCURRENCY, async (film) => {
+      try {
+        return (await resolveFilmIds(film.slug)).tmdbId;
+      } catch {
+        return undefined;
+      }
+    })
+  ).filter((id): id is string => Boolean(id));
+
+  await warmMovieDetails(watchlistTmdbIds);
+  await mapPool(watchlistTmdbIds, DETAILS_FETCH_CONCURRENCY, async (tmdbId) => {
     try {
-      const ids = await resolveFilmIds(film.slug);
-      if (!ids.tmdbId) return;
-      const details = await fetchMovieDetails(ids.tmdbId);
+      const details = await fetchMovieDetails(tmdbId);
       if (!details) return;
       for (const gid of details.genreIds) {
         freq.set(gid, (freq.get(gid) ?? 0) + WATCHLIST_GENRE_WEIGHT);
@@ -200,6 +213,7 @@ async function gatherSeeds(
   // start: each entry takes one Letterboxd page fetch (slug → tmdb)
   // plus the TMDB similar/recs round-trips later.
   const watchlistSample = watchlist.slice(0, WATCHLIST_SEED_SAMPLE);
+  await warmFilmIds(watchlistSample.map((f) => f.slug));
   await mapPool(watchlistSample, DETAILS_FETCH_CONCURRENCY, async (film) => {
     try {
       const ids = await resolveFilmIds(film.slug);
@@ -223,6 +237,7 @@ async function expandSimilars(
 ): Promise<Map<string, CandidateScore>> {
   const candidates = new Map<string, CandidateScore>();
 
+  await warmSeedExpansions(seeds.map((seed) => seed.tmdbId));
   await mapPool(seeds, SIMILAR_FETCH_CONCURRENCY, async ({ tmdbId, weight }) => {
     try {
       const [similar, recs] = await Promise.all([
@@ -283,6 +298,7 @@ async function expandRecentByGenre(
 
 async function resolveImdbIds(tmdbIds: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
+  await warmMovieDetails(tmdbIds);
   await mapPool(tmdbIds, DETAILS_FETCH_CONCURRENCY, async (tmdbId) => {
     const details = await fetchMovieDetails(tmdbId);
     if (details?.imdbId) map.set(tmdbId, details.imdbId);
