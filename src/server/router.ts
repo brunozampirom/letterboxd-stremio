@@ -1,10 +1,10 @@
 import * as fs from 'node:fs';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import * as path from 'node:path';
-import { info as cacheInfo, flushWrites } from '../cache';
+import { info as cacheInfo, flushWrites, isDegraded as cacheDegraded } from '../cache';
 import { isEnabled as recommendationsEnabled } from '../recommend/engine';
 import { handleCatalog } from '../stremio/handlers';
-import { buildManifest, FLAG_RE, parseFlags } from '../stremio/manifest';
+import { buildManifest, CATALOG_CURATED_PREFIX, FLAG_RE, parseFlags } from '../stremio/manifest';
 import { handleProbe, handleRefresh } from './admin';
 import { Bucket, check, info as ratelimitInfo, LimitResult } from './ratelimit';
 
@@ -23,8 +23,17 @@ const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 // edge for an hour. Catalogs are held just under the Letterboxd scrape
 // TTL (20 min by default) so the CDN never serves content older than
 // the data layer behind it.
+//
+// Curated catalogs sit on official lists that change a few times a
+// year (cached for a day, see handlers.ts). Only the per-user exclusion
+// filter moves, so a film just watched may linger there for an hour.
 const CACHE_MANIFEST = 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400';
 const CACHE_CATALOG = 'public, max-age=300, s-maxage=900, stale-while-revalidate=86400';
+const CACHE_CURATED = 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400';
+
+// Retry hint while the cache backend is parked. Matches the cooldown
+// in cache/redis.ts.
+const UNAVAILABLE_RETRY_S = 60;
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -85,6 +94,19 @@ function sendNotFound(res: ServerResponse) {
 function sendError(res: ServerResponse, message: string, status = 500) {
   res.writeHead(status, { 'Content-Type': 'text/plain', ...CORS_HEADERS });
   res.end(message);
+}
+
+// Sent instead of rendering a catalog cold while the cache backend is
+// down. no-store keeps the CDN from swapping a good cached catalog for
+// this response.
+function sendUnavailable(res: ServerResponse) {
+  res.writeHead(503, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Retry-After': String(UNAVAILABLE_RETRY_S),
+    ...CORS_HEADERS,
+  });
+  res.end(JSON.stringify({ error: 'cache_unavailable', retryAfter: UNAVAILABLE_RETRY_S }));
 }
 
 function sendRateLimited(res: ServerResponse, result: LimitResult) {
@@ -212,17 +234,33 @@ async function dispatch(req: IncomingMessage, res: ServerResponse) {
         sendNotFound(res);
         return;
       }
+      if (cacheDegraded()) {
+        sendUnavailable(res);
+        return;
+      }
       const rl = await gate(req, res, 'catalog');
       if (rl.limited) return;
       const idSegments = rest.slice(2, -1).concat(last.replace(/\.json$/, ''));
       const catalogId = idSegments[0];
       const result = await handleCatalog(username, type, catalogId);
-      sendJson(res, 200, result, CACHE_CATALOG, rateLimitHeaders(rl.result));
+      // If the backend went down mid-render, the handlers swallowed the
+      // refused fetches and the result is partial. Don't let the CDN
+      // hold on to it.
+      if (cacheDegraded()) {
+        sendUnavailable(res);
+        return;
+      }
+      const cacheControl = catalogId.startsWith(CATALOG_CURATED_PREFIX) ? CACHE_CURATED : CACHE_CATALOG;
+      sendJson(res, 200, result, cacheControl, rateLimitHeaders(rl.result));
       return;
     }
 
     sendNotFound(res);
   } catch (err) {
+    if (cacheDegraded()) {
+      sendUnavailable(res);
+      return;
+    }
     // Never echo the backend's error text back to Stremio. An Upstash
     // quota message used to come back verbatim as the response body.
     console.error('[router] request failed', err);

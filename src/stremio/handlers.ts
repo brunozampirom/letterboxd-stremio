@@ -22,6 +22,10 @@ const CURATED_DISPLAY_LIMIT = 100;
 // timeout. We pull 1.5x the display limit to leave room for the
 // exclusion filter to drop seen films without dipping below 100.
 const CURATED_RESOLVE_LIMIT = Math.ceil(CURATED_DISPLAY_LIMIT * 1.5);
+// Curated catalogs are built from official Letterboxd lists that change
+// a few times a year. Re-scraping them on the 20 min user-data TTL
+// cost several page fetches per list for no new information.
+const CURATED_LIST_TTL_MS = 24 * 60 * 60 * 1000;
 
 async function filmsToMetas(
   films: LetterboxdFilm[],
@@ -123,7 +127,7 @@ export async function handleCatalog(
 
     try {
       const [filmsAll, excluded] = await Promise.all([
-        fetchListFilms(list.owner, list.slug).catch(() => []),
+        fetchListFilms(list.owner, list.slug, CURATED_LIST_TTL_MS).catch(() => []),
         buildExclusionSet(username).catch(() => new Set<string>()),
       ]);
 
