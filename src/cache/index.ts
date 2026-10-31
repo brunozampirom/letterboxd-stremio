@@ -1,15 +1,32 @@
 import * as memory from './memory';
 import {
   getRedis,
+  isDown as redisIsDown,
   redisDeleteByPattern,
   redisGet,
   redisMGet,
   redisSetMany,
+  resetHealth as resetRedisHealth,
   RedisWrite,
 } from './redis';
 
 const useRedis = getRedis() !== null;
 console.log(`[cache] backend: ${useRedis ? 'redis (upstash) + memory L1' : 'memory'}`);
+
+// Thrown by getOrFetch instead of running the fetcher while Redis is
+// parked (see redis.ts). A cold render costs seconds of CPU, and with
+// the shared cache gone every render on every instance would be cold.
+// Values already in the L1 are still served.
+export class CacheUnavailableError extends Error {
+  constructor() {
+    super('cache backend unavailable');
+    this.name = 'CacheUnavailableError';
+  }
+}
+
+export function isDegraded(): boolean {
+  return useRedis && redisIsDown();
+}
 
 // How long a value read out of Redis may live in the process-local L1.
 // Capped well below the long namespace TTLs (filmIds and cinemeta are
@@ -62,12 +79,13 @@ function l1Ttl(ttlMs: number): number {
 export type CacheInfo = {
   backend: 'redis' | 'memory';
   vendor?: 'upstash';
+  degraded?: boolean;
   l1Entries?: number;
 };
 
 export function info(): CacheInfo {
   return useRedis
-    ? { backend: 'redis', vendor: 'upstash', l1Entries: memory.size() }
+    ? { backend: 'redis', vendor: 'upstash', degraded: isDegraded(), l1Entries: memory.size() }
     : { backend: 'memory', l1Entries: memory.size() };
 }
 
@@ -110,6 +128,8 @@ export async function warm(keys: readonly string[], ttlMs: number): Promise<void
   }
   if (missing.length === 0) return;
   const found = await redisMGet<unknown>(missing);
+  // A failed MGET proves nothing about which keys exist.
+  if (isDegraded()) return;
   for (const key of missing) {
     const value = found.get(key);
     if (value === undefined) markMissing(key);
@@ -126,6 +146,8 @@ export async function getOrFetch<T>(
   const local = memory.get<T>(key);
   if (local !== undefined) return local;
 
+  if (isDegraded()) throw new CacheUnavailableError();
+
   if (useRedis && !isKnownMissing(key)) {
     const remote = await redisGet<T>(key);
     if (remote !== undefined) {
@@ -133,6 +155,9 @@ export async function getOrFetch<T>(
       return remote;
     }
   }
+
+  // The read above may be the one that just found Redis down.
+  if (isDegraded()) throw new CacheUnavailableError();
 
   const value = await fetcher();
   if (!shouldCache || shouldCache(value)) {
@@ -150,6 +175,7 @@ export function clear(): void {
   pendingWrites.clear();
   knownMissing.clear();
   memory.clear();
+  resetRedisHealth();
 }
 
 const PER_USER_PATTERNS = (username: string) => [

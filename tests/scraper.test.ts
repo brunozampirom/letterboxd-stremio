@@ -3,6 +3,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as cheerio from 'cheerio';
 import { parseFilmIds } from '../src/letterboxd/film';
+import { decodeEntities, hasNextPage, parseFilmsFromPage } from '../src/letterboxd/scraper';
+import { LetterboxdFilm } from '../src/letterboxd/types';
 
 const FIXTURES = path.join(__dirname, 'fixtures');
 
@@ -25,25 +27,52 @@ describe('film page IMDB / TMDB extraction', () => {
   });
 });
 
-describe('watchlist parsing', () => {
-  it('extracts film slugs and titles from a real watchlist page', () => {
-    const html = loadFixture('watchlist.html');
-    const $ = cheerio.load(html);
-    const items: { slug: string; title: string; year?: number }[] = [];
-    $('div[data-component-class="LazyPoster"][data-item-slug]').each((_, el) => {
-      const $el = $(el);
-      const slug = $el.attr('data-item-slug');
-      if (!slug) return;
-      const fullName = $el.attr('data-item-full-display-name') ?? '';
-      const yearMatch = fullName.match(/\((\d{4})\)\s*$/);
-      items.push({
-        slug,
-        title: $el.attr('data-item-name') ?? slug,
-        year: yearMatch ? Number.parseInt(yearMatch[1], 10) : undefined,
-      });
+// The scraper reads list pages with regexes for CPU reasons. cheerio
+// stays here as the reference: whatever a real DOM parser reads out of
+// the same markup is what the regex parser has to return.
+function parseWithCheerio(html: string): LetterboxdFilm[] {
+  const $ = cheerio.load(html);
+  const films: LetterboxdFilm[] = [];
+  $('div[data-component-class="LazyPoster"][data-item-slug]').each((_, el) => {
+    const $el = $(el);
+    const slug = $el.attr('data-item-slug');
+    if (!slug) return;
+    const rawName = $el.attr('data-item-name') ?? slug;
+    const fullName = $el.attr('data-item-full-display-name') ?? rawName;
+    const yearMatch = fullName.match(/\((\d{4})\)\s*$/);
+    films.push({
+      slug,
+      title: rawName.replace(/\s*\(\d{4}\)\s*$/, '').trim() || rawName,
+      year: yearMatch ? Number.parseInt(yearMatch[1], 10) : undefined,
     });
-    expect(items.length).toBeGreaterThan(0);
-    expect(items[0].slug).toMatch(/^[a-z0-9-]+$/);
-    expect(items[0].title.length).toBeGreaterThan(0);
+  });
+  return films;
+}
+
+describe('list page parsing', () => {
+  it.each(['watchlist.html', 'list-first-page.html', 'list-last-page.html'])(
+    'matches a DOM parser on %s',
+    (fixture) => {
+      const html = loadFixture(fixture);
+      const films = parseFilmsFromPage(html);
+      expect(films.length).toBeGreaterThan(0);
+      expect(films).toEqual(parseWithCheerio(html));
+    },
+  );
+
+  it('decodes entities and splits the year off the title', () => {
+    const films = parseFilmsFromPage(loadFixture('list-last-page.html'));
+    expect(films).toContainEqual({ slug: 'pride-prejudice', title: 'Pride & Prejudice', year: 2005 });
+    expect(films.map((f) => f.title)).toContain("A Dog's Will");
+  });
+
+  it('sees a next page only while the Next control is a link', () => {
+    expect(hasNextPage(loadFixture('list-first-page.html'))).toBe(true);
+    // The last page still renders <span class="next">, disabled.
+    expect(hasNextPage(loadFixture('list-last-page.html'))).toBe(false);
+  });
+
+  it('decodes the entities Letterboxd emits and leaves unknown names alone', () => {
+    expect(decodeEntities('Am&eacute;lie &amp; &#039;x&#x27; &lt;3')).toBe("Am&eacute;lie & 'x' <3");
   });
 });

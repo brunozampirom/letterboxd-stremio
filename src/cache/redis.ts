@@ -2,6 +2,29 @@ import { Redis } from '@upstash/redis';
 
 let client: Redis | null | undefined;
 
+// Once Upstash fails (over its monthly quota, unreachable), every read
+// degrades to a miss and every miss means re-scraping Letterboxd, which
+// is the most CPU-expensive thing this app does. That combination used
+// up the Vercel Active CPU allowance. So a failure parks the backend
+// for a cooldown: no commands are sent, and cache/index.ts refuses to
+// run fetchers instead of rendering everything cold. The first request
+// after the cooldown probes Upstash again.
+const FAILURE_COOLDOWN_MS = 60 * 1000;
+let downUntil = 0;
+
+function markDown(op: string, err: unknown): void {
+  downUntil = Date.now() + FAILURE_COOLDOWN_MS;
+  console.warn(`[cache:redis] ${op} failed, backend parked for ${FAILURE_COOLDOWN_MS / 1000}s`, err);
+}
+
+export function isDown(): boolean {
+  return Date.now() < downUntil;
+}
+
+export function resetHealth(): void {
+  downUntil = 0;
+}
+
 // Upstash bills per *command*, not per round-trip: MGET over 150 keys
 // is one command, a pipeline of 150 GETs is 150. Every call site that
 // needs a set of keys must go through redisMGet for that reason.
@@ -37,12 +60,12 @@ export function getRedis(): Redis | null {
 
 export async function redisGet<T>(key: string): Promise<T | undefined> {
   const r = getRedis();
-  if (!r) return undefined;
+  if (!r || isDown()) return undefined;
   try {
     const v = await r.get<T>(key);
     return v ?? undefined;
   } catch (err) {
-    console.warn('[cache:redis] get failed', err);
+    markDown('get', err);
     return undefined;
   }
 }
@@ -50,7 +73,7 @@ export async function redisGet<T>(key: string): Promise<T | undefined> {
 export async function redisMGet<T>(keys: readonly string[]): Promise<Map<string, T>> {
   const found = new Map<string, T>();
   const r = getRedis();
-  if (!r || keys.length === 0) return found;
+  if (!r || keys.length === 0 || isDown()) return found;
   try {
     for (const batch of chunk(keys, MGET_CHUNK)) {
       const values = await r.mget<(T | null)[]>(batch as string[]);
@@ -60,18 +83,18 @@ export async function redisMGet<T>(keys: readonly string[]): Promise<Map<string,
       });
     }
   } catch (err) {
-    console.warn('[cache:redis] mget failed', err);
+    markDown('mget', err);
   }
   return found;
 }
 
 export async function redisSet<T>(key: string, value: T, ttlMs: number): Promise<void> {
   const r = getRedis();
-  if (!r) return;
+  if (!r || isDown()) return;
   try {
     await r.set(key, value, { px: ttlMs });
   } catch (err) {
-    console.warn('[cache:redis] set failed', err);
+    markDown('set', err);
   }
 }
 
@@ -79,7 +102,7 @@ export type RedisWrite = { key: string; value: unknown; ttlMs: number };
 
 export async function redisSetMany(entries: readonly RedisWrite[]): Promise<void> {
   const r = getRedis();
-  if (!r || entries.length === 0) return;
+  if (!r || entries.length === 0 || isDown()) return;
   try {
     for (const batch of chunk(entries, PIPELINE_CHUNK)) {
       const p = r.pipeline();
@@ -87,7 +110,7 @@ export async function redisSetMany(entries: readonly RedisWrite[]): Promise<void
       await p.exec();
     }
   } catch (err) {
-    console.warn('[cache:redis] pipelined set failed', err);
+    markDown('pipelined set', err);
   }
 }
 
